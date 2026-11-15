@@ -228,12 +228,31 @@ function update_setting_put(array $pairs): void
     }
 }
 
+/**
+ * Kunci pengaturan versi dipisah per repositori.
+ *
+ * Dua instalasi CBT (mis. versi native dan versi Laravel) dapat memakai satu database
+ * yang sama; tanpa pemisahan ini status versi keduanya saling menimpa.
+ */
+function update_version_key(string $suffix): string
+{
+    $slug = strtolower(trim((string) UPDATE_REPO_SLUG));
+
+    return $slug === '' ? $suffix : $suffix . ':' . $slug;
+}
+
 /** Versi terpasang (dari tabel settings; kosong bila belum pernah diperbarui). */
 function update_installed_version(): array
 {
-    $version = update_setting_get('app_version');
-    $updatedAt = update_setting_get('app_updated_at');
-    $source = update_setting_get('app_update_source');
+    $version = update_setting_get(update_version_key('app_version'));
+    $updatedAt = update_setting_get(update_version_key('app_updated_at'));
+    $source = update_setting_get(update_version_key('app_update_source'));
+    if ($version === '') {
+        // Kompatibilitas dengan kunci lama sebelum pemisahan per repositori.
+        $version = update_setting_get('app_version');
+        $updatedAt = update_setting_get('app_updated_at');
+        $source = update_setting_get('app_update_source');
+    }
     return [
         'version'    => $version,
         'updated_at' => $updatedAt,
@@ -246,9 +265,9 @@ function update_installed_version(): array
 function update_store_version(string $version, string $source): void
 {
     update_setting_put([
-        'app_version'       => $version,
-        'app_updated_at'    => now_dt(),
-        'app_update_source' => $source,
+        update_version_key('app_version')       => $version,
+        update_version_key('app_updated_at')    => now_dt(),
+        update_version_key('app_update_source') => $source,
     ]);
 }
 
