@@ -1,0 +1,3 @@
+# Semua berkas disimpan apa adanya (tanpa konversi CRLF/LF) agar Index.html
+# tetap byte-identik dengan berkas asli Apps Script.
+* -text

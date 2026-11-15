@@ -1,0 +1,18 @@
+# Sementara / hasil debug
+_tmp/
+*.log
+*.tmp
+*.bak
+
+# Artefak analisis (hasil ekstraksi sementara)
+_analysis/
+
+# Berkas sistem
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.idea/
+.vscode/
+*.swp
