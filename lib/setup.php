@@ -230,7 +230,15 @@ function setup_needs_wizard(): bool
         $cache = $adminCount === 0;
         return $cache;
     } catch (Throwable $e) {
-        error_log('[CBT setup] database belum siap: ' . $e->getMessage());
+        // Hanya galat "database belum ada / kredensial salah" yang berarti perlu wizard.
+        // Galat lain (mis. koneksi habis saat ujian ramai) bukan alasan menampilkan
+        // halaman setup, jadi diteruskan sebagai kesalahan server.
+        $message = $e->getMessage();
+        $belumSiap = preg_match('/(1049|1045|1044|2002|10061|Unknown database|Access denied|Connection refused|Connection timed out)/i', $message);
+        if (!$belumSiap) {
+            throw new RuntimeException('Database tidak dapat diakses: ' . $message, 0, $e);
+        }
+        error_log('[CBT setup] database belum siap: ' . $message);
         $cache = true;
         return true;
     }
