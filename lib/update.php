@@ -168,6 +168,22 @@ function update_download(string $url, string $destination): void
 }
 
 /** Info commit terakhir dari API GitHub (best-effort; null bila gagal/limit). */
+/**
+ * Status HTTP terakhir saat membaca API GitHub (0 = tidak terhubung).
+ *
+ * Dipakai membedakan "repositori privat" (404) dari "kuota API habis" (403/429)
+ * agar pesan pada kartu Pembaruan tidak menyesatkan.
+ */
+function update_api_status(?int $set = null): int
+{
+    static $status = 0;
+    if ($set !== null) {
+        $status = $set;
+    }
+
+    return $status;
+}
+
 function update_remote_commit(): ?array
 {
     $url = 'https://api.github.com/repos/' . UPDATE_REPO_SLUG . '/commits/' . UPDATE_BRANCH;
@@ -185,6 +201,7 @@ function update_remote_commit(): ?array
         $raw = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+        update_api_status($status);
         if ($raw === false || $status !== 200) {
             return null;
         }
@@ -542,14 +559,19 @@ function getApplicationVersion($username, $token): array
     }
 
     $installed = update_installed_version();
+    $repoConfigured = trim((string) UPDATE_REPO_SLUG) !== '';
     $remote = update_remote_commit();
     $tokenSet = update_token() !== '';
+    $apiStatus = update_api_status();
+    $repoPrivate = $repoConfigured && $remote === null && !$tokenSet && $apiStatus === 404;
 
     return [
         'success'         => true,
         'token_set'       => $tokenSet,
-        'repo_private'    => $remote === null && !$tokenSet,
-        'needs_token'     => $remote === null && !$tokenSet,
+        'api_status'      => $apiStatus,
+        'repo_configured' => $repoConfigured,
+        'repo_private'    => $repoPrivate,
+        'needs_token'     => $repoPrivate,
         'current_version' => $installed['version'],
         'current_short'   => $installed['short'],
         'updated_at'      => $installed['updated_at'],

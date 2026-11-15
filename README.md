@@ -395,6 +395,10 @@ Isi **Token GitHub** pada kartu yang sama (fine-grained token dengan izin *Conte
 browser, atau set environment variable `CBT_UPDATE_TOKEN`. Bila repo dijadikan publik,
 token tidak diperlukan lagi.
 
+> Catatan kuota: GitHub membatasi **60 permintaan API/jam** untuk permintaan tanpa token.
+> Bila kuota habis, kartu menampilkan pesan *kuota API habis*; pembaruan tetap bisa
+> dijalankan karena arsip diunduh lewat `codeload`, bukan API.
+
 > Tombol ini butuh ekstensi `curl` dan `phar`, serta izin tulis web server pada folder
 > aplikasi. Untuk server tanpa akses internet keluar, perbarui manual (git pull / unggah
 > ulang berkas) lalu buka `index.php`.

@@ -3887,7 +3887,14 @@
       }
 
       if (latest) {
-        if (res.needs_token) {
+        if (res.repo_configured === false) {
+          latest.innerHTML = 'Sumber pembaruan belum diatur. Isi <strong class="text-slate-600">CBT_UPDATE_REPO</strong> pada berkas konfigurasi, lalu muat ulang halaman.';
+        } else if (res.api_status === 429 || res.api_status === 403) {
+          latest.innerHTML = 'Kuota API GitHub sedang habis (tanpa token: 60 permintaan/jam). '
+            + 'Coba lagi beberapa menit lagi, atau isi <strong class="text-slate-600">Token GitHub</strong> di bawah.';
+        } else if (res.api_status === 0) {
+          latest.innerHTML = 'Tidak dapat menghubungi GitHub (jaringan server). Periksa koneksi lalu coba lagi.';
+        } else if (res.needs_token) {
           latest.innerHTML = 'Repositori bersifat <strong class="text-slate-600">privat</strong>: isi <strong class="text-slate-600">Token GitHub</strong> di bawah, '
             + 'atau jadikan repo publik agar pembaruan bisa berjalan tanpa token.';
         } else if (!res.latest_short) {
