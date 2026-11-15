@@ -11,6 +11,9 @@ _analysis/
 # dan masih tersimpan pada commit fbcbdcc di riwayat git).
 /tests/
 
+# Kunci enkripsi lokal (dibuat otomatis) — JANGAN di-commit
+config/pass.key
+
 # Berkas sistem
 .DS_Store
 Thumbs.db

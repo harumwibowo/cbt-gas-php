@@ -70,7 +70,7 @@ function getStudentExamCards($username, $token): array
 
             $students[] = [
                 'username'     => $uname,
-                'password'     => tostr($row['password']),
+                'password'     => password_for_display($row),
                 'nama_lengkap' => tostr($row['nama_lengkap']) !== '' ? tostr($row['nama_lengkap']) : $uname,
                 'kelas'        => tostr($row['kelas']) !== '' ? tostr($row['kelas']) : '-',
                 'sesi'         => tostr($row['sesi']) !== '' ? tostr($row['sesi']) : '-',
@@ -232,16 +232,24 @@ function saveUser($username, $token, $userData): array
             if ($existing === null) {
                 return err('Data pengguna tidak ditemukan untuk diedit.');
             }
-            $newPassword = tostr($userData['password'] ?? '') !== ''
-                ? tostr($userData['password'])
-                : tostr($existing['password']);
-
             $roleChanged = strtolower($role) !== strtolower(tostr($existing['role']));
-            db_exec(
-                'UPDATE users SET username = ?, password = ?, nama_lengkap = ?, role = ?, kelas = ?,
-                    status_aktif = ?, sesi = ?, tingkat = ? WHERE id_user = ?',
-                [$targetUsername, $newPassword, $nama, $role, $kelas, $status, $sesiVal, $tktVal, tostr($existing['id_user'])]
-            );
+            $passwordBaru = trim(tostr($userData['password'] ?? ''));
+
+            if ($passwordBaru !== '') {
+                [$newHash, $newEnc] = password_fields($passwordBaru);
+                db_exec(
+                    'UPDATE users SET username = ?, password = ?, password_enc = ?, nama_lengkap = ?, role = ?, kelas = ?,
+                        status_aktif = ?, sesi = ?, tingkat = ? WHERE id_user = ?',
+                    [$targetUsername, $newHash, $newEnc, $nama, $role, $kelas, $status, $sesiVal, $tktVal, tostr($existing['id_user'])]
+                );
+            } else {
+                // Password tidak diubah: nilai lama dipertahankan.
+                db_exec(
+                    'UPDATE users SET username = ?, nama_lengkap = ?, role = ?, kelas = ?,
+                        status_aktif = ?, sesi = ?, tingkat = ? WHERE id_user = ?',
+                    [$targetUsername, $nama, $role, $kelas, $status, $sesiVal, $tktVal, tostr($existing['id_user'])]
+                );
+            }
             // Akun nonaktif / perubahan peran mengakhiri sesi aktif
             if (strtolower($status) === 'nonaktif' || $roleChanged) {
                 db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [tostr($existing['id_user'])]);
@@ -251,11 +259,12 @@ function saveUser($username, $token, $userData): array
             return ['success' => true, 'message' => 'Pengguna berhasil diperbarui.'];
         }
 
-        $pass = tostr($userData['password'] ?? '') !== '' ? tostr($userData['password']) : '123456';
+        $pass = trim(tostr($userData['password'] ?? '')) !== '' ? trim(tostr($userData['password'])) : '123456';
+        [$passHash, $passEnc] = password_fields($pass);
         db_exec(
-            'INSERT INTO users (id_user, username, password, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
-             VALUES (?,?,?,?,?,?,?,?,?,?)',
-            [new_id('USR'), $targetUsername, $pass, $nama, $role, $kelas, null, $status, $sesiVal, $tktVal]
+            'INSERT INTO users (id_user, username, password, password_enc, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            [new_id('USR'), $targetUsername, $passHash, $passEnc, $nama, $role, $kelas, null, $status, $sesiVal, $tktVal]
         );
 
         log_activity(tostr($username), 'Create User', 'Menambahkan user baru: ' . $targetUsername . ' (' . $role . ', Tingkat: ' . $tktVal . ', Sesi: ' . $sesiVal . ')');
@@ -297,11 +306,13 @@ function changePassword($username, $token, $currentPassword, $newPassword, $conf
         if (!$row) {
             return err('Akun pengguna tidak ditemukan.');
         }
-        if (tostr($row['password']) !== $currentPassword) {
+        if (!verify_password($currentPassword, $row['password'] ?? '')) {
             return err('Password saat ini salah. Silakan periksa kembali.');
         }
 
-        db_exec('UPDATE users SET password = ? WHERE id_user = ?', [$newPassword, tostr($row['id_user'])]);
+        [$newHash, $newEnc] = password_fields($newPassword);
+        db_exec('UPDATE users SET password = ?, password_enc = ? WHERE id_user = ?',
+            [$newHash, $newEnc, tostr($row['id_user'])]);
         log_activity(tostr($username), 'Change Password', 'Pengguna berhasil memperbarui password akun.');
 
         return ['success' => true, 'message' => 'Password berhasil diperbarui!'];
@@ -525,20 +536,19 @@ function importUsers($username, $token, $usersList): array
 
             if (isset($existingUsers[$targetUsername])) {
                 $existingId = $existingUsers[$targetUsername];
-                $existingRow = db_one('SELECT password FROM users WHERE id_user = ?', [$existingId]);
-                $finalPass = $password !== '' ? $password : tostr($existingRow['password'] ?? '');
-
+                [$impHash, $impEnc] = password_fields($password);
                 db_exec(
-                    'UPDATE users SET username = ?, password = ?, nama_lengkap = ?, role = ?, kelas = ?,
+                    'UPDATE users SET username = ?, password = ?, password_enc = ?, nama_lengkap = ?, role = ?, kelas = ?,
                         status_aktif = ?, sesi = ?, tingkat = ? WHERE id_user = ?',
-                    [$rawUsername, $finalPass, $namaLengkap, $role, $kelas, $status, $sesi, $finalTingkat, $existingId]
+                    [$rawUsername, $impHash, $impEnc, $namaLengkap, $role, $kelas, $status, $sesi, $finalTingkat, $existingId]
                 );
                 $updatedCount++;
             } else {
+                [$impHash2, $impEnc2] = password_fields($password);
                 db_exec(
-                    'INSERT INTO users (id_user, username, password, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
-                     VALUES (?,?,?,?,?,?,?,?,?,?)',
-                    [new_id('USR'), $rawUsername, $password, $namaLengkap, $role, $kelas, null, $status, $sesi, $finalTingkat]
+                    'INSERT INTO users (id_user, username, password, password_enc, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                    [new_id('USR'), $rawUsername, $impHash2, $impEnc2, $namaLengkap, $role, $kelas, null, $status, $sesi, $finalTingkat]
                 );
                 $existingUsers[$targetUsername] = true;
                 $addedCount++;

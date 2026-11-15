@@ -105,16 +105,20 @@ function ensure_schema(): void
 
     // Migrasi ringan: pastikan kolom baru tersedia pada instalasi lama.
     $columns = [
-        'users' => ['sesi', 'tingkat'],
+        'users' => [
+            'sesi'         => "VARCHAR(50) NOT NULL DEFAULT '-'",
+            'tingkat'      => "VARCHAR(50) NOT NULL DEFAULT '-'",
+            'password_enc' => 'TEXT NULL',
+        ],
     ];
-    foreach ($columns as $table => $names) {
+    foreach ($columns as $table => $defs) {
         $existing = array_column(
             db_all('SHOW COLUMNS FROM `' . $table . '`'),
             'Field'
         );
-        foreach ($names as $name) {
+        foreach ($defs as $name => $ddl) {
             if (!in_array($name, $existing, true)) {
-                db()->exec("ALTER TABLE `$table` ADD COLUMN `$name` VARCHAR(50) NOT NULL DEFAULT '-'");
+                db()->exec("ALTER TABLE `$table` ADD COLUMN `$name` $ddl");
             }
         }
     }
@@ -139,10 +143,13 @@ function seed_defaults(): void
     // Akun admin default
     $hasAdmin = (int) db_val('SELECT COUNT(*) FROM users WHERE username = ?', ['admin'], 0);
     if ($hasAdmin === 0) {
+        // Password disimpan sebagai hash; password_enc hanya dipakai untuk
+        // mencetak password siswa pada kartu ujian (AES-256-GCM).
         db_exec(
-            'INSERT INTO users (id_user, username, password, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
-             VALUES (?,?,?,?,?,?,?,?,?,?)',
-            [new_id('USR'), 'admin', 'admin123', 'Administrator CBT', 'Admin', 'Semua', '', 'Aktif', 'Semua', '-']
+            'INSERT INTO users (id_user, username, password, password_enc, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            [new_id('USR'), 'admin', hash_password('admin123'), enc_secret('admin123') ?? '',
+             'Administrator CBT', 'Admin', 'Semua', '', 'Aktif', 'Semua', '-']
         );
     }
 

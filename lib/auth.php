@@ -18,6 +18,74 @@ function err(string $message, array $extra = []): array
     return array_merge(['success' => false, 'message' => $message], $extra);
 }
 
+// ---------------------------------------------------------------------------
+// Password: hash (bcrypt/argon2) + salinan terenkripsi untuk kartu ujian
+// ---------------------------------------------------------------------------
+
+/** True bila nilai sudah berupa hash password (bukan plain text data lama). */
+function is_password_hash($value): bool
+{
+    $v = tostr($value);
+    return str_starts_with($v, '$2y$')
+        || str_starts_with($v, '$2a$')
+        || str_starts_with($v, '$2b$')
+        || str_starts_with($v, '$argon2');
+}
+
+/** Hash password baru (PASSWORD_DEFAULT). */
+function hash_password(string $plain): string
+{
+    return password_hash($plain, PASSWORD_DEFAULT);
+}
+
+/**
+ * Verifikasi password. Mendukung data lama yang masih plain text (hasil migrasi
+ * dari Google Sheets) sehingga pengguna tidak perlu reset password.
+ */
+function verify_password(string $plain, $stored): bool
+{
+    $s = tostr($stored);
+    if ($s === '') {
+        return false;
+    }
+    if (is_password_hash($s)) {
+        return password_verify($plain, $s);
+    }
+    return hash_equals($s, $plain);
+}
+
+/** Pasangan [hash, cipher] untuk kolom password & password_enc. */
+function password_fields(string $plain): array
+{
+    return [hash_password($plain), enc_secret($plain) ?? ''];
+}
+
+/** Password asli untuk ditampilkan (kartu ujian); '' bila tak tersedia. */
+function password_for_display(array $row): string
+{
+    $dec = dec_secret($row['password_enc'] ?? '');
+    if ($dec !== '') {
+        return $dec;
+    }
+    $stored = tostr($row['password'] ?? '');
+    return is_password_hash($stored) ? '' : $stored;
+}
+
+/** Naikkan penyimpanan password lama (plain text) menjadi hash. */
+function upgrade_legacy_password(array $row, string $plain): void
+{
+    if (is_password_hash(tostr($row['password'] ?? ''))) {
+        return;
+    }
+    try {
+        [$hash, $enc] = password_fields($plain);
+        db_exec('UPDATE users SET password = ?, password_enc = ? WHERE id_user = ?', [$hash, $enc, tostr($row['id_user'])]);
+        log_activity(tostr($row['username']), 'Upgrade Password', 'Penyimpanan password ditingkatkan ke hash.');
+    } catch (Throwable $e) {
+        error_log('Gagal upgrade hash password: ' . $e->getMessage());
+    }
+}
+
 /** Ambil satu baris user berdasarkan username (case-insensitive). */
 function find_user(string $username): ?array
 {
@@ -82,9 +150,12 @@ function login($username, $password, $userAgent = ''): array
         if (!$user) {
             return err('Username tidak ditemukan.');
         }
-        if (tostr($user['password']) !== $password) {
+        if (!verify_password($password, $user['password'] ?? '')) {
             return err('Password salah. Silakan periksa kembali.');
         }
+
+        // Data lama (plain text) otomatis diubah menjadi hash saat login berhasil.
+        upgrade_legacy_password($user, $password);
 
         $status = strtolower(tostr($user['status_aktif']));
         if ($status !== '' && $status !== 'aktif') {

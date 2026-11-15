@@ -327,11 +327,24 @@ Login `admin / admin123` → urutan yang disarankan:
 
 **Catatan keamanan penting**
 
-> Password pengguna disimpan **apa adanya (plain text)** — perilaku ini diwarisi dari versi
-> Google Apps Script agar parity 100%. Untuk produksi yang menangani data sensitif,
-> sangat disarankan migrasi ke `password_hash()`/`password_verify()`. Titik perubahan:
-> fungsi `login()` di `lib/auth.php`, `changePassword`/`saveUser`/`importUsers` di
-> `modules/admin.php`, dan kolom `users.password`.
+### Penyimpanan password
+
+- Password disimpan sebagai **hash** (`password_hash()`, bcrypt/argon2) di kolom
+  `users.password`. Tidak ada password yang bisa dibaca langsung dari database.
+- Data lama hasil migrasi Google Sheets yang masih **plain text** tetap bisa login:
+  saat login pertama berhasil, password otomatis dinaikkan menjadi hash
+  (`upgrade_legacy_password()` di `lib/auth.php`). Migrasi serentak juga tersedia:
+  `php tools/migrate-passwords.php`.
+- **Kartu ujian** masih mencetak password siswa. Untuk itu password juga disimpan
+  terenkripsi (AES-256-GCM) di kolom `users.password_enc`, hanya bisa dibuka dengan
+  kunci aplikasi:
+  - `CBT_PASS_KEY` (environment variable, base64 32 byte atau passphrase bebas), **atau**
+  - berkas `config/pass.key` yang dibuat otomatis pada request pertama (sudah
+    di-`.gitignore`, jangan pernah di-commit).
+  - Jika kunci hilang, login tetap berjalan normal (hash tidak terpengaruh); yang hilang
+    hanya tampilan password pada kartu ujian.
+  - Pada server Linux, pastikan berkas kunci hanya bisa dibaca web server:
+    `chmod 600 config/pass.key && chown www-data config/pass.key`.
 
 ---
 
@@ -377,8 +390,11 @@ cbt-gas-php/
 ├── lib/
 │   ├── db.php                # PDO singleton + ensure_schema() + seed data awal
 │   ├── helpers.php           # Utilitas: id, token, tanggal, log, katalog, normalisasi
-│   ├── auth.php              # Login/logout, validasi sesi, peran pengguna
+│   ├── crypto.php            # AES-256-GCM untuk password_enc (kartu ujian)
+│   ├── auth.php              # Login/logout, hash password, validasi sesi, peran
 │   └── settings.php          # Pengaturan, kebijakan pelanggaran global, zona waktu
+├── tools/
+│   └── migrate-passwords.php # CLI: migrasi plain text → hash, reset password akun
 ├── modules/
 │   ├── admin.php             # Pengguna, kartu ujian, dashboard, sesi login siswa, impor
 │   ├── sessions.php          # Master data sesi ujian
@@ -389,7 +405,8 @@ cbt-gas-php/
 │   ├── student_exam.php      # Mulai/autosave/pelanggaran/submit/blokir/buka blokir
 │   ├── media.php             # Simpan/saji/hapus gambar di MySQL (dedupe, pembersihan)
 │   └── gemini.php            # Generator soal AI (opsional)
-└── .htaccess                 # Proteksi folder internal (Apache; lihat catatan AllowOverride)
+├── .htaccess                 # Proteksi folder internal (Apache; lihat catatan AllowOverride)
+└── config/pass.key           # Kunci enkripsi (dibuat otomatis, tidak di-commit)
 ```
 
 ---
@@ -473,10 +490,17 @@ mysql -u root -p cbt_gas -e "SET FOREIGN_KEY_CHECKS=0;
 
 Buka `index.php` sekali → kembali menjadi: `admin/admin123`, 2 sesi, 14 pengaturan.
 
-**Lupa password admin** (masih plain text):
+**Lupa password admin** (password disimpan sebagai hash, jadi diubah lewat CLI):
 
 ```bash
-mysql -u root -p cbt_gas -e "UPDATE users SET password='admin123', token_session='' WHERE username='admin';"
+php tools/migrate-passwords.php --reset admin admin123
+```
+
+Perintah itu menulis hash baru, memperbarui salinan terenkripsi untuk kartu ujian, dan
+mengakhiri semua sesi login akun tersebut. Untuk melihat akun mana yang masih plain text:
+
+```bash
+php tools/migrate-passwords.php --dry-run
 ```
 
 ---
@@ -502,8 +526,9 @@ mysql -u root -p cbt_gas -e "UPDATE users SET password='admin123', token_session
 
 ## 13. Catatan teknis & batasan
 
-- **Password plain text** — diwarisi dari versi Apps Script (lihat catatan di
-  [bagian 6](#6-checklist-siap-deploy)).
+- **Password** disimpan sebagai hash; salinan terenkripsi (`users.password_enc`) hanya
+  dipakai agar kartu ujian tetap bisa mencetak password siswa — lihat
+  [Penyimpanan password](#penyimpanan-password).
 - **UI**: `Index.html` dipertahankan; satu-satunya perubahan adalah kontrol gambar
   (URL/ID Drive → tombol unggah) pada form butir soal dan logo sekolah.
 - **Zona waktu**: seluruh tanggal disimpan sebagai `DATETIME` naif pada zona pengaturan;

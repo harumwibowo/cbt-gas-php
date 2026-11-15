@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id_user`      VARCHAR(40)  NOT NULL,
   `username`     VARCHAR(100) NOT NULL,
   `password`     VARCHAR(255) NOT NULL DEFAULT '',
+  `password_enc` TEXT         NULL,
   `nama_lengkap` VARCHAR(150) NOT NULL DEFAULT '',
   `role`         VARCHAR(20)  NOT NULL DEFAULT 'Siswa',
   `kelas`        VARCHAR(50)  NOT NULL DEFAULT '-',
