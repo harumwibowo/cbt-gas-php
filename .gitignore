@@ -17,6 +17,7 @@ config/pass.key
 # Kredensial database hasil halaman setup + penanda instalasi — JANGAN di-commit
 config/database.json
 config/installed.json
+config/update_token.txt
 
 # Cadangan berkas sebelum pembaruan aplikasi
 /storage/

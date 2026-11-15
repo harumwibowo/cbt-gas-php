@@ -23,7 +23,7 @@ RedirectMatch 404 /\.git(/|$)
 RedirectMatch 404 /storage(/|$)
 
 # Berkas kredensial database tidak boleh diunduh lewat HTTP.
-<FilesMatch "^(database\.json|pass\.key|installed\.json)$">
+<FilesMatch "^(database\.json|pass\.key|installed\.json|update_token\.txt)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>

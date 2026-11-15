@@ -27,12 +27,13 @@ shim kecil di browser, sehingga tidak ada satu pun komponen UI yang perlu dituli
 5. [Pengaturan awal setelah login](#5-pengaturan-awal-setelah-login)
 6. [Checklist siap deploy](#6-checklist-siap-deploy)
 7. [Backup & restore](#7-backup--restore)
-8. [Struktur proyek](#8-struktur-proyek)
-9. [Cara kerja & parity fitur](#9-cara-kerja--parity-fitur)
-10. [Endpoint HTTP](#10-endpoint-http)
-11. [Reset data](#11-reset-data)
-12. [Pemecahan masalah](#12-pemecahan-masalah)
-13. [Catatan teknis & batasan](#13-catatan-teknis--batasan)
+8. [Pembaruan aplikasi dari GitHub](#7b-pembaruan-aplikasi-dari-github)
+9. [Struktur proyek](#8-struktur-proyek)
+10. [Cara kerja & parity fitur](#9-cara-kerja--parity-fitur)
+11. [Endpoint HTTP](#10-endpoint-http)
+12. [Reset data](#11-reset-data)
+13. [Pemecahan masalah](#12-pemecahan-masalah)
+14. [Catatan teknis & batasan](#13-catatan-teknis--batasan)
 
 ---
 
@@ -81,75 +82,71 @@ git clone https://github.com/harumwibowo/cbt-gas-php.git
 #    Linux/Apache    : /var/www/cbt-gas-php
 ```
 
-3. **Pastikan MySQL berjalan**, lalu (opsional) sesuaikan kredensial database —
-   lihat [bagian 3](#3-konfigurasi-database). Default: `root`, tanpa password,
-   database `cbt_gas`.
-4. Buka di browser:
+3. **Pastikan MySQL berjalan**, lalu buka di browser:
 
    ```
-   http://localhost/cbt-gas-php/index.php
+   http://localhost/cbt-gas-php/
    ```
 
-   Pada request pertama aplikasi otomatis membuat database `cbt_gas`, 9 tabel, dan data
-   awal: akun **`admin` / `admin123`**, 2 sesi ujian (Sesi 1 & Sesi 2), dan 14 pengaturan
-   default. Tidak ada langkah import SQL yang wajib.
-5. Login sebagai `admin` / `admin123`, lalu **segera ganti password** lewat menu **Akun**.
+4. **Halaman setup muncul otomatis** (karena aplikasi belum terpasang). Isi host, port,
+   nama database, user, dan password MySQL. Ada tombol **Uji Koneksi** sebelum instalasi.
+   Semua kolom kredensial tinggal diisi di halaman itu &mdash; **tidak perlu mengedit
+   `config/config.php`**.
+5. Tekan **Instal Sekarang**. Aplikasi membuat 9 tabel + data awal (akun `admin` /
+   `admin123`, 2 sesi ujian, 14 pengaturan) dan menyimpan kredensial ke
+   `config/database.json` (mode 0600, tidak masuk git).
+6. Halaman setup **tidak akan muncul lagi**; Anda langsung diarahkan ke halaman login.
+   Login sebagai `admin` / `admin123`, lalu **segera ganti password** lewat menu **Akun**.
 
-> Bila user MySQL Anda tidak punya izin `CREATE DATABASE`, buat database secara manual
-> lalu impor skema — lihat [bagian 3](#3-konfigurasi-database).
+> Halaman setup muncul kembali hanya bila `config/database.json` hilang, database tidak
+> bisa dihubungi, atau belum ada akun Admin &mdash; jadi berguna juga untuk memperbaiki
+> kredensial yang salah. Untuk membukanya secara manual tambahkan `?force=1`
+> (`setup.php?force=1`).
 
 ---
 
 ## 3. Konfigurasi database
 
-Kredensial dibaca dari environment variable (diutamakan) atau nilai default di
-`config/config.php`:
+**Cara A &mdash; halaman setup (disarankan, tanpa edit berkas)**
 
-| Environment variable | Default | Keterangan |
-|---|---|---|
-| `CBT_DB_HOST` | `127.0.0.1` | host MySQL |
-| `CBT_DB_PORT` | `3306` | port MySQL |
-| `CBT_DB_NAME` | `cbt_gas` | nama database |
-| `CBT_DB_USER` | `root` | user database |
-| `CBT_DB_PASS` | *(kosong)* | password database |
+Buka `http://host-anda/cbt-gas-php/` lalu isi formulir. Aplikasi menyimpan hasilnya ke
+`config/database.json`:
 
-**Cara A — environment variable (disarankan untuk produksi)**
-
-Apache (`VirtualHost` atau `.htaccess`, modul `mod_env`):
-
-```apache
-SetEnv CBT_DB_HOST 127.0.0.1
-SetEnv CBT_DB_NAME cbt_gas
-SetEnv CBT_DB_USER cbt_user
-SetEnv CBT_DB_PASS "password-rahasia"
-```
-
-Nginx + PHP-FPM (`/etc/nginx/sites-available/cbt.conf`):
-
-```nginx
-location ~ \.php$ {
-    fastcgi_pass unix:/run/php/php8.3-fpm.sock;
-    fastcgi_param CBT_DB_HOST 127.0.0.1;
-    fastcgi_param CBT_DB_NAME cbt_gas;
-    fastcgi_param CBT_DB_USER cbt_user;
-    fastcgi_param CBT_DB_PASS "password-rahasia";
-    include fastcgi_params;
+```json
+{
+    "host": "127.0.0.1",
+    "port": 3306,
+    "name": "cbt_gas",
+    "user": "root",
+    "pass": "",
+    "installed": "2026-01-01T08:00:00+07:00",
+    "version": 1
 }
 ```
 
-**Cara B — edit `config/config.php`**
+| Kolom formulir | Keterangan |
+|---|---|
+| Host / hostname | `127.0.0.1` atau `localhost` (hosting biasanya `localhost`) |
+| Port | default `3306` |
+| Nama database | database kosong yang sudah dibuat (atau dicentang untuk dibuat otomatis) |
+| Username / password | akun MySQL dengan izin `CREATE`, `ALTER`, `INSERT`, `SELECT` |
+| Buat database otomatis | matikan bila user tidak punya izin `CREATE DATABASE` |
 
-```php
-define('DB_HOST', '127.0.0.1');
-define('DB_NAME', 'cbt_gas');
-define('DB_USER', 'cbt_user');
-define('DB_PASS', 'password-rahasia');
-```
+Kredensial juga bisa diisi dari environment variable &mdash; dipakai **lebih dulu**
+daripada `config/database.json` (cocok untuk Docker/PaaS):
 
-> Jangan simpan kredensial produksi di dalam repo. `config/config.php` hanya berisi
-> default pengembangan; gunakan environment variable untuk server asli.
+| Environment variable | Default |
+|---|---|
+| `CBT_DB_HOST` | `127.0.0.1` |
+| `CBT_DB_PORT` | `3306` |
+| `CBT_DB_NAME` | `cbt_gas` |
+| `CBT_DB_USER` | `root` |
+| `CBT_DB_PASS` | *(kosong)* |
 
-**Cara C — impor skema manual (tanpa izin CREATE DATABASE)**
+Contoh Apache (`SetEnv`) / Nginx (`fastcgi_param`) sama seperti di dokumentasi umum:
+cukup tambahkan variabel di atas, lalu aplikasi tidak memakai `config/database.json`.
+
+**Cara B &mdash; impor skema manual (tanpa izin CREATE DATABASE)**
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE cbt_gas CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
@@ -157,8 +154,8 @@ mysql -u root -p cbt_gas < database/schema.sql
 ```
 
 `database/schema.sql` bersifat **idempotent** (`CREATE TABLE IF NOT EXISTS`), aman
-dijalankan berulang. Setelah itu buka aplikasi sekali agar data awal (admin, sesi,
-pengaturan) terisi otomatis.
+dijalankan berulang. Setelah itu buka aplikasi dan isi halaman setup (database sudah ada,
+jadi cukup diuji koneksinya) agar data awal terisi otomatis.
 
 **Verifikasi koneksi**
 
@@ -324,6 +321,9 @@ Login `admin / admin123` → urutan yang disarankan:
 - [ ] Perbesar batas sesi PHP bila sekolah mengunggah banyak gambar sekaligus.
 - [ ] Pasang `fail2ban`/rate limit di level web server untuk endpoint `api.php`.
 - [ ] Simpan `logs` berkala (tabel `logs` menyimpan jejak login, pelanggaran, ubah pengaturan).
+- [ ] Sudah membuka halaman setup dan menekan **Instal Sekarang** (bukan sekadar membuka
+      `index.php` dengan kredensial default).
+- [ ] Bila memakai fitur pembaruan pada repo privat: token GitHub sudah diisi.
 
 **Catatan keamanan penting**
 
@@ -374,6 +374,33 @@ hasil restore sesuai lokasi sekolah — semua `DATETIME` disimpan sebagai jam di
 
 ---
 
+## 7b. Pembaruan aplikasi dari GitHub
+
+Login sebagai **Admin &rarr; Pengaturan &rarr; kartu Pembaruan Aplikasi**:
+
+- **Cek Versi** &mdash; membandingkan versi terpasang dengan `main` di
+  `github.com/harumwibowo/cbt-gas-php` (tanpa mengubah berkas).
+- **Update** &mdash; mengunduh arsip repo, mencadangkan berkas lama ke
+  `storage/backups/update-YYYYmmdd-HHMMSS/`, menimpa berkas aplikasi, memeriksa sintaks
+  setiap berkas PHP, lalu menyimpan versi baru di tabel `settings`.
+
+Yang **tidak** pernah ditimpa: `config/database.json`, `config/pass.key`,
+`config/installed.json`, `config/update_token.txt`, folder `storage/`. Data siswa, soal,
+dan hasil ujian ada di MySQL sehingga tetap utuh. Bila ada berkas PHP yang rusak setelah
+diunduh, seluruh perubahan **dibatalkan otomatis** (*rollback*).
+
+**Repositori privat.** Bila repo tidak publik, unduhan anonim akan gagal (`HTTP 404`).
+Isi **Token GitHub** pada kartu yang sama (fine-grained token dengan izin *Contents: Read*)
+&mdash; token disimpan di `config/update_token.txt` (0600) dan tidak pernah dikirim ke
+browser, atau set environment variable `CBT_UPDATE_TOKEN`. Bila repo dijadikan publik,
+token tidak diperlukan lagi.
+
+> Tombol ini butuh ekstensi `curl` dan `phar`, serta izin tulis web server pada folder
+> aplikasi. Untuk server tanpa akses internet keluar, perbarui manual (git pull / unggah
+> ulang berkas) lalu buka `index.php`.
+
+---
+
 ## 8. Struktur proyek
 
 ```
@@ -391,10 +418,14 @@ cbt-gas-php/
 │   ├── db.php                # PDO singleton + ensure_schema() + seed data awal
 │   ├── helpers.php           # Utilitas: id, token, tanggal, log, katalog, normalisasi
 │   ├── crypto.php            # AES-256-GCM untuk password_enc (kartu ujian)
+│   ├── setup.php             # Deteksi instal baru, uji koneksi, simpan kredensial
+│   ├── update.php            # Pembaruan aplikasi dari GitHub (+ rollback)
 │   ├── auth.php              # Login/logout, hash password, validasi sesi, peran
 │   └── settings.php          # Pengaturan, kebijakan pelanggaran global, zona waktu
 ├── tools/
 │   └── migrate-passwords.php # CLI: migrasi plain text → hash, reset password akun
+├── setup.php                 # Halaman setup instalasi baru (form koneksi DB)
+├── storage/backups/          # Cadangan otomatis sebelum pembaruan (gitignored)
 ├── modules/
 │   ├── admin.php             # Pengguna, kartu ujian, dashboard, sesi login siswa, impor
 │   ├── sessions.php          # Master data sesi ujian
@@ -406,7 +437,9 @@ cbt-gas-php/
 │   ├── media.php             # Simpan/saji/hapus gambar di MySQL (dedupe, pembersihan)
 │   └── gemini.php            # Generator soal AI (opsional)
 ├── .htaccess                 # Proteksi folder internal (Apache; lihat catatan AllowOverride)
-└── config/pass.key           # Kunci enkripsi (dibuat otomatis, tidak di-commit)
+├── config/pass.key           # Kunci enkripsi (dibuat otomatis, tidak di-commit)
+├── config/database.json      # Kredensial hasil setup (dibuat otomatis, tidak di-commit)
+└── config/update_token.txt   # Token GitHub opsional (tidak di-commit)
 ```
 
 ---

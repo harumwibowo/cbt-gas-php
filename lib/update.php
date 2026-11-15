@@ -141,7 +141,8 @@ function update_download(string $url, string $destination): void
         $err = curl_error($ch);
         curl_close($ch);
         fclose($fp);
-        if ($ok === false || $status !== 200) {
+        // Status 0 = protokol non-HTTP (mis. file:// untuk uji/mirror internal).
+        if ($ok === false || ($status !== 200 && $status !== 0)) {
             $hint = ($status === 404 || $status === 401 || $status === 403)
                 ? ' Repositori bersifat privat atau token GitHub belum diisi: isi token pada kartu Pembaruan Aplikasi.'
                 : '';
