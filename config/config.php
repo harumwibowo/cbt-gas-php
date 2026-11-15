@@ -5,11 +5,30 @@
  */
 declare(strict_types=1);
 
-define('DB_HOST', getenv('CBT_DB_HOST') ?: '127.0.0.1');
-define('DB_PORT', (int) (getenv('CBT_DB_PORT') ?: 3306));
-define('DB_NAME', getenv('CBT_DB_NAME') ?: 'cbt_gas');
-define('DB_USER', getenv('CBT_DB_USER') ?: 'root');
-define('DB_PASS', getenv('CBT_DB_PASS') !== false ? getenv('CBT_DB_PASS') : '');
+/**
+ * Kredensial database.
+ * Urutan prioritas: environment variable -> config/database.json (dibuat oleh
+ * halaman setup) -> default pengembangan. Tidak perlu mengedit berkas ini.
+ */
+define('CBT_DB_CONFIG_FILE', __DIR__ . '/database.json');
+
+$cbtInstallConfig = [];
+if (is_file(CBT_DB_CONFIG_FILE)) {
+    $cbtRaw = @file_get_contents(CBT_DB_CONFIG_FILE);
+    $cbtDecoded = is_string($cbtRaw) ? json_decode($cbtRaw, true) : null;
+    if (is_array($cbtDecoded)) {
+        $cbtInstallConfig = $cbtDecoded;
+    }
+}
+
+define('DB_HOST', getenv('CBT_DB_HOST') ?: (string) ($cbtInstallConfig['host'] ?? '127.0.0.1'));
+define('DB_PORT', (int) (getenv('CBT_DB_PORT') ?: ($cbtInstallConfig['port'] ?? 3306)));
+define('DB_NAME', getenv('CBT_DB_NAME') ?: (string) ($cbtInstallConfig['name'] ?? 'cbt_gas'));
+define('DB_USER', getenv('CBT_DB_USER') ?: (string) ($cbtInstallConfig['user'] ?? 'root'));
+define('DB_PASS', getenv('CBT_DB_PASS') !== false ? (string) getenv('CBT_DB_PASS') : (string) ($cbtInstallConfig['pass'] ?? ''));
+
+/** True bila kredensial berasal dari environment (mode produksi lanjutan). */
+define('CBT_DB_FROM_ENV', getenv('CBT_DB_HOST') !== false || getenv('CBT_DB_NAME') !== false);
 
 define('APP_NAME', 'CBT GAS - Platform Ujian Online');
 define('APP_TIMEZONE', 'Asia/Jakarta');
@@ -42,6 +61,7 @@ require_once APP_ROOT . '/lib/helpers.php';
 require_once APP_ROOT . '/lib/crypto.php';
 require_once APP_ROOT . '/lib/auth.php';
 require_once APP_ROOT . '/lib/settings.php';
+require_once APP_ROOT . '/lib/setup.php';
 
 // Zona waktu aplikasi mengikuti pengaturan (WIB / WITA / WIT), bukan zona waktu
 // server. Bila database belum siap, tetap memakai default Asia/Jakarta.

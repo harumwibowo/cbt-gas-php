@@ -14,6 +14,13 @@ _analysis/
 # Kunci enkripsi lokal (dibuat otomatis) — JANGAN di-commit
 config/pass.key
 
+# Kredensial database hasil halaman setup + penanda instalasi — JANGAN di-commit
+config/database.json
+config/installed.json
+
+# Cadangan berkas sebelum pembaruan aplikasi
+/storage/
+
 # Berkas sistem
 .DS_Store
 Thumbs.db

@@ -18,8 +18,20 @@
   </IfModule>
 </FilesMatch>
 
-# Folder .git tidak boleh bisa diakses lewat HTTP.
+# Folder .git / storage (cadangan pembaruan & berkas lokal) tidak boleh diakses.
 RedirectMatch 404 /\.git(/|$)
+RedirectMatch 404 /storage(/|$)
+
+# Berkas kredensial database tidak boleh diunduh lewat HTTP.
+<FilesMatch "^(database\.json|pass\.key|installed\.json)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
 
 # Cache ringan untuk aset statis.
 <IfModule mod_expires.c>

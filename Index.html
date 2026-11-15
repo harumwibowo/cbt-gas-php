@@ -1023,6 +1023,52 @@
             </div>
           </div>
 
+            <!-- Card 5: Pembaruan Aplikasi (tarik langsung dari GitHub) -->
+            <div class="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5 lg:col-span-2">
+              <div class="flex items-center justify-between pb-4 border-b border-slate-100 flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
+                    <i data-lucide="download-cloud" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h3 class="font-extrabold text-slate-800 text-base">Pembaruan Aplikasi</h3>
+                    <p class="text-xs text-slate-400">Tarik versi terbaru langsung dari repositori GitHub &middot; <a href="https://github.com/harumwibowo/cbt-gas-php" target="_blank" rel="noopener" class="text-sky-600 hover:underline font-semibold">harumwibowo/cbt-gas-php</a></p>
+                  </div>
+                </div>
+                <span id="app-update-badge" class="hidden text-[11px] font-bold px-3 py-1.5 rounded-full border"></span>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-bold uppercase text-slate-500">Versi Terpasang</label>
+                  <p class="text-sm font-mono font-bold text-slate-700" id="app-version-current">memuat...</p>
+                  <p class="text-xs text-slate-400">Diperbarui: <span id="app-update-time" class="font-semibold text-slate-500">-</span></p>
+                  <p class="text-xs text-slate-400" id="app-update-latest">Tekan <strong class="text-slate-500">Cek Versi</strong> untuk membandingkan dengan repositori.</p>
+                </div>
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-bold uppercase text-slate-500">Aksi</label>
+                  <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="handleCheckAppUpdate()" id="btn-check-update" class="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition inline-flex items-center gap-2">
+                      <i data-lucide="search" class="w-4 h-4"></i> Cek Versi
+                    </button>
+                    <button type="button" onclick="handleAppUpdate()" id="btn-app-update" class="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-sky-600/30 inline-flex items-center gap-2">
+                      <i data-lucide="download-cloud" class="w-4 h-4"></i> Update
+                    </button>
+                  </div>
+                  <p class="text-[11px] text-slate-400 leading-relaxed">Berkas konfigurasi (<code class="bg-slate-100 px-1 rounded">config/database.json</code>, <code class="bg-slate-100 px-1 rounded">config/pass.key</code>) dan seluruh data ujian tidak diubah. Cadangan otomatis disimpan di <code class="bg-slate-100 px-1 rounded">storage/backups/</code>.</p>
+
+                  <div class="pt-2">
+                    <label class="block text-[11px] font-bold uppercase text-slate-400 mb-1">Token GitHub (opsional &mdash; hanya untuk repo privat)</label>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <input type="password" id="app-update-token" autocomplete="new-password" placeholder="ghp_... / github_pat_..." class="flex-1 min-w-[180px] px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500">
+                      <button type="button" onclick="handleSaveUpdateToken()" id="btn-save-update-token" class="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[11px] transition">Simpan Token</button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1">Status token: <span id="app-update-token-state" class="font-semibold text-slate-500">memeriksa...</span>. Token disimpan di <code class="bg-slate-100 px-1 rounded">config/update_token.txt</code> (0600) dan tidak pernah dikirim ke browser.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           <div class="flex justify-end gap-3 pt-2">
             <button type="button" onclick="loadAppSettings(true)" class="px-5 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-sm transition">
               Muat Ulang Pengaturan
@@ -3804,6 +3850,170 @@
     // ==========================================
     // APP SETTINGS & BRANDING CONTROLLER
     // ==========================================
+    // ==========================================
+    // PEMBARUAN APLIKASI (GitHub)
+    // ==========================================
+    function renderApplicationVersion(res) {
+      const cur = document.getElementById('app-version-current');
+      const time = document.getElementById('app-update-time');
+      const latest = document.getElementById('app-update-latest');
+      const badge = document.getElementById('app-update-badge');
+      if (!cur) return;
+
+      const short = (res.current_short || '').trim();
+      cur.textContent = short ? short : 'belum pernah diperbarui';
+      if (time) {
+        time.textContent = res.updated_at
+          ? new Date(String(res.updated_at).replace(' ', 'T')).toLocaleString('id-ID')
+          : '-';
+      }
+
+      if (badge) {
+        badge.classList.remove('hidden', 'bg-amber-50', 'text-amber-700', 'border-amber-200',
+          'bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+        if (res.update_available) {
+          badge.textContent = 'Versi baru tersedia';
+          badge.classList.add('bg-amber-50', 'text-amber-700', 'border-amber-200');
+        } else if (res.latest_short) {
+          badge.textContent = 'Versi terbaru';
+          badge.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+        }
+      }
+
+      const tokenState = document.getElementById('app-update-token-state');
+      if (tokenState) {
+        tokenState.textContent = res.token_set ? 'tersimpan' : 'belum diisi';
+        tokenState.className = 'font-semibold ' + (res.token_set ? 'text-emerald-600' : 'text-slate-500');
+      }
+
+      if (latest) {
+        if (res.needs_token) {
+          latest.innerHTML = 'Repositori bersifat <strong class="text-slate-600">privat</strong>: isi <strong class="text-slate-600">Token GitHub</strong> di bawah, '
+            + 'atau jadikan repo publik agar pembaruan bisa berjalan tanpa token.';
+        } else if (!res.latest_short) {
+          latest.innerHTML = 'Tidak dapat menghubungi GitHub. Periksa koneksi server, lalu coba lagi.';
+        } else if (res.update_available) {
+          latest.innerHTML = 'Terbaru di GitHub: <strong class="text-amber-600 font-mono">' + res.latest_short + '</strong>'
+            + (res.latest_message ? ' &middot; ' + res.latest_message : '');
+        } else {
+          latest.innerHTML = 'Sudah memakai versi terbaru (<strong class="text-emerald-600 font-mono">' + res.latest_short + '</strong>).';
+        }
+      }
+    }
+
+    function loadApplicationVersion(silent = true) {
+      if (!AppState.user || String(AppState.user.role || '').toLowerCase() !== 'admin') return;
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.success) renderApplicationVersion(res);
+          else if (!silent) showToast((res && res.message) || 'Gagal membaca versi aplikasi.', 'error');
+        })
+        .withFailureHandler(err => {
+          if (!silent) showToast('Gagal membaca versi aplikasi: ' + ((err && err.message) || 'kesalahan server'), 'error');
+        })
+        .getApplicationVersion(AppState.user.username, AppState.token);
+    }
+
+    function handleSaveUpdateToken() {
+      const input = document.getElementById('app-update-token');
+      const btn = document.getElementById('btn-save-update-token');
+      if (!input) return;
+      const value = input.value.trim();
+      const original = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = 'Menyimpan...'; }
+      google.script.run
+        .withSuccessHandler(res => {
+          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          if (res && res.success) {
+            input.value = '';
+            showToast(res.message, 'success');
+            loadApplicationVersion(true);
+          } else {
+            showToast((res && res.message) || 'Token gagal disimpan.', 'error');
+          }
+        })
+        .withFailureHandler(err => {
+          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          showToast('Token gagal disimpan: ' + ((err && err.message) || 'kesalahan server'), 'error');
+        })
+        .setUpdateToken(AppState.user.username, AppState.token, value);
+    }
+
+    function handleCheckAppUpdate() {
+      const btn = document.getElementById('btn-check-update');
+      const original = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = 'Memeriksa...'; }
+      google.script.run
+        .withSuccessHandler(res => {
+          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          if (res && res.success) {
+            renderApplicationVersion(res);
+            showToast(res.update_available
+              ? 'Versi baru tersedia: ' + res.latest_short
+              : 'Aplikasi sudah versi terbaru.', res.update_available ? 'info' : 'success');
+          } else {
+            showToast((res && res.message) || 'Gagal memeriksa versi.', 'error');
+          }
+        })
+        .withFailureHandler(err => {
+          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          showToast('Gagal memeriksa versi: ' + ((err && err.message) || 'kesalahan server'), 'error');
+        })
+        .getApplicationVersion(AppState.user.username, AppState.token);
+    }
+
+    async function handleAppUpdate() {
+      const btn = document.getElementById('btn-app-update');
+      const confirmed = await showCustomConfirm({
+        title: 'Perbarui Aplikasi',
+        message: 'Aplikasi akan diperbarui dari repositori GitHub. Berkas konfigurasi dan seluruh data ujian tetap aman, '
+          + 'tetapi halaman akan dimuat ulang setelah selesai. Lanjutkan?',
+        type: 'warning',
+        confirmText: 'Ya, Update',
+        cancelText: 'Batal'
+      });
+      if (!confirmed) return;
+
+      const original = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = 'Memperbarui...'; }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          if (res && res.success) {
+            if (res.up_to_date) {
+              showCustomAlert({ title: 'Sudah Versi Terbaru', message: res.message, type: 'info' });
+              loadApplicationVersion(true);
+              return;
+            }
+            showCustomAlert({
+              title: 'Pembaruan Berhasil',
+              message: res.message + '\n\nBerkas diperbarui: ' + res.files_updated
+                + (res.files_added ? ' (+' + res.files_added + ' baru)' : '')
+                + (res.backup ? '\nCadangan: ' + res.backup : ''),
+              type: 'success'
+            });
+            loadApplicationVersion(true);
+            setTimeout(() => window.location.reload(), 2200);
+          } else {
+            showCustomAlert({
+              title: 'Pembaruan Gagal',
+              message: (res && res.message) || 'Terjadi kesalahan saat memperbarui aplikasi.',
+              type: 'error'
+            });
+          }
+        })
+        .withFailureHandler(err => {
+          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          showCustomAlert({
+            title: 'Pembaruan Gagal',
+            message: (err && err.message) ? err.message : 'Server tidak merespons. Coba lagi beberapa saat.',
+            type: 'error'
+          });
+        })
+        .updateApplication(AppState.user.username, AppState.token, false);
+    }
+
     function loadAppSettings(force = false, callback = null) {
       google.script.run
         .withSuccessHandler(res => {
@@ -3811,6 +4021,7 @@
             AppState.settings = res.settings;
             applyBrandingSettings();
             populateSettingsForm();
+            if (typeof loadApplicationVersion === 'function') loadApplicationVersion(true);
             if (typeof callback === 'function') {
               callback(res.settings);
             }

@@ -13,6 +13,12 @@ try {
     error_log('[CBT] Bootstrap skema gagal: ' . $e->getMessage());
 }
 
+// Instalasi baru / database belum siap -> arahkan ke halaman setup.
+if (setup_needs_wizard()) {
+    header('Location: setup.php');
+    exit;
+}
+
 $viewFile = APP_ROOT . '/Index.html';
 if (!is_file($viewFile)) {
     http_response_code(500);

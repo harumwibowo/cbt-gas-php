@@ -21,6 +21,7 @@ require_once APP_ROOT . '/modules/results.php';
 require_once APP_ROOT . '/modules/student.php';
 require_once APP_ROOT . '/modules/student_exam.php';
 require_once APP_ROOT . '/modules/gemini.php';
+require_once APP_ROOT . '/lib/update.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -50,6 +51,8 @@ const ALLOWED_ACTIONS = [
     'blockStudentExam', 'unblockStudentExam',
     // AI (Gemini)
     'getGeminiModels', 'testGeminiConnection', 'generateQuestionsWithGemini',
+    // Pemeliharaan aplikasi
+    'updateApplication', 'getApplicationVersion', 'setUpdateToken',
 ];
 
 /** Ambil action dari query string. */
@@ -97,6 +100,16 @@ if (!in_array($action, ALLOWED_ACTIONS, true)) {
 }
 
 try {
+    // Instalasi belum selesai: beri tahu klien agar membuka halaman setup.
+    if (setup_needs_wizard()) {
+        http_response_code(503);
+        echo json_encode([
+            'error'       => 'Instalasi belum selesai. Buka setup.php untuk mengatur database.',
+            'needs_setup' => true,
+        ]);
+        exit;
+    }
+
     // Bootstrap skema otomatis (idempotent) agar aplikasi langsung siap pakai.
     ensure_schema();
 
