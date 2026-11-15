@@ -475,7 +475,7 @@ function update_apply(string $username, string $token, bool $force = false): arr
         }
 
         // ------------------------------------------------------------- 8. simpan
-        update_store_version($newVersion, 'github');
+        update_store_version($newVersion, $remoteSha !== '' ? 'github' : 'archive');
         update_rmdir($tmp);
 
         log_activity(tostr($username), 'Update Aplikasi', 'Versi ' . substr($newVersion, 0, 7)
