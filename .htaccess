@@ -1,0 +1,32 @@
+# ---------------------------------------------------------------------------
+# CBT GAS - konfigurasi Apache (opsional untuk Nginx, lihat README)
+# ---------------------------------------------------------------------------
+
+# Jangan menampilkan daftar isi folder.
+<IfModule mod_autoindex.c>
+  Options -Indexes
+</IfModule>
+
+# Blokir unduhan berkas internal (dokumentasi & metadata repo).
+<FilesMatch "^(README\.md|\.gitignore|\.gitattributes|\.htaccess)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# Folder .git tidak boleh bisa diakses lewat HTTP.
+RedirectMatch 404 /\.git(/|$)
+
+# Cache ringan untuk aset statis.
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/png  "access plus 7 days"
+  ExpiresByType image/jpeg "access plus 7 days"
+  ExpiresByType image/svg+xml "access plus 7 days"
+  ExpiresByType text/css   "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+</IfModule>

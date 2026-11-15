@@ -7,6 +7,10 @@ _tmp/
 # Artefak analisis (hasil ekstraksi sementara)
 _analysis/
 
+# Suite uji pengembangan (tidak diperlukan untuk instalasi; tetap ada di disk
+# dan masih tersimpan pada commit fbcbdcc di riwayat git).
+/tests/
+
 # Berkas sistem
 .DS_Store
 Thumbs.db
