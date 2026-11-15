@@ -170,6 +170,7 @@ function setup_run(array $input, bool $createDb = true): array
 
         ensure_schema();
 
+        $tableCount = count($pdo->query('SHOW TABLES')->fetchAll());
         $adminCount = (int) db_val("SELECT COUNT(*) FROM users WHERE LOWER(TRIM(role)) = 'admin'", [], 0);
         $userCount = (int) db_val('SELECT COUNT(*) FROM users', [], 0);
         $settingsCount = (int) db_val('SELECT COUNT(*) FROM settings', [], 0);
@@ -191,7 +192,7 @@ function setup_run(array $input, bool $createDb = true): array
         return [
             'success'  => true,
             'message'  => 'Instalasi berhasil! Silakan login dengan admin / admin123.',
-            'tables'   => (int) ($test['tables'] ?? 0),
+            'tables'   => $tableCount,
             'users'    => $userCount,
             'settings' => $settingsCount,
         ];
