@@ -1,6 +1,6 @@
 # CBT GAS → PHP Native + MySQL
 
-Konversi aplikasi CBT (aslinya Google Apps Script, `Code.gs` + `Index.html`) menjadi
+Konversi aplikasi CBT (aslinya Google Apps Script `Code.gs` + `Index.html`) menjadi
 aplikasi **PHP 8 native + MySQL** tanpa kehilangan satu fitur pun.
 
 ## Prinsip konversi
@@ -255,5 +255,6 @@ mysql -uroot cbt_gas -e "SET FOREIGN_KEY_CHECKS=0; TRUNCATE users; TRUNCATE exam
   Untuk produksi sebaiknya ganti ke `password_hash()`.
 - `export_*`/cetak tetap berjalan di sisi klien (frontend tidak diubah).
 - Folder `_analysis/` (hasil ekstraksi sementara untuk analisis) sudah dihapus.
-- `Code.gs` adalah sumber asli Apps Script dan **tidak dipakai** oleh aplikasi PHP;
-  disimpan hanya sebagai rujukan parity. Aman dihapus bila tidak diperlukan lagi.
+- `Code.gs` (sumber asli Apps Script) **sudah dihapus** dari folder kerja karena tidak
+  dipakai aplikasi PHP. Masih tersimpan di riwayat git untuk rujukan parity:
+  `git show fbcbdcc:Code.gs > Code.gs`.
