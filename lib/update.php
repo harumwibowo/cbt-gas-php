@@ -73,11 +73,14 @@ function update_http_headers(): array
  * Repo publik: codeload. Repo privat (token tersedia): endpoint API tarball.
  * CBT_UPDATE_URL menimpa keduanya (dipakai untuk uji/mirror internal).
  */
-function update_archive_url(): string
+function update_archive_url(?string $ref = null): string
 {
     $override = getenv('CBT_UPDATE_URL');
     if (is_string($override) && trim($override) !== '') {
         return trim($override);
+    }
+    if ($ref !== null && $ref !== '') {
+        return 'https://codeload.github.com/' . UPDATE_REPO_SLUG . '/tar.gz/' . $ref;
     }
     if (update_token() !== '') {
         return 'https://api.github.com/repos/' . UPDATE_REPO_SLUG . '/tarball/' . UPDATE_BRANCH;
@@ -295,15 +298,17 @@ function update_apply(string $username, string $token, bool $force = false): arr
     try {
         $tmp = update_temp_dir();
 
-        // ---------------------------------------------------------- 1. unduh
-        $url = update_archive_url();
+        // ------------------------------------------- 1. cek versi lalu unduh
+        $remote = update_remote_commit();
+        $installed = update_installed_version();
+        $remoteSha = is_array($remote) && isset($remote['sha']) ? tostr($remote['sha']) : '';
+
+        $url = update_archive_url($remoteSha !== '' ? $remoteSha : null);
         $archive = $tmp . '/source.tar.gz';
         update_download($url, $archive);
 
         $payloadHash = hash_file('sha256', $archive) ?: '';
-        $remote = update_remote_commit();
-        $newVersion = $remote['sha'] ?? $payloadHash;
-        $installed = update_installed_version();
+        $newVersion = $remoteSha !== '' ? $remoteSha : $payloadHash;
 
         if (!$force && $installed['version'] !== '' && $installed['version'] === $newVersion) {
             update_rmdir($tmp);
@@ -464,27 +469,25 @@ function update_apply(string $username, string $token, bool $force = false): arr
 /** Periksa sintaks berkas PHP yang baru ditulis (butuh exec/shell_exec). */
 function update_lint_files(array $relativePaths): array
 {
-    $phpFiles = array_values(array_filter($relativePaths, fn ($p) => str_ends_with(strtolower($p), '.php')));
-    if ($phpFiles === [] || (!function_exists('exec') && !function_exists('shell_exec'))) {
-        return [];
-    }
-
-    $binary = PHP_BINARY !== '' ? PHP_BINARY : 'php';
+    // Diperiksa dengan parser PHP sendiri (token_get_all + TOKEN_PARSE) agar tidak
+    // bergantung pada proses eksternal: PHP_BINARY bernilai httpd.exe saat mod_php.
     $failures = [];
-    foreach ($phpFiles as $relative) {
-        $cmd = escapeshellarg($binary) . ' -l ' . escapeshellarg(APP_ROOT . '/' . $relative) . ' 2>&1';
-        $output = [];
-        $code = 0;
-        if (function_exists('exec')) {
-            @exec($cmd, $output, $code);
-        } else {
-            $out = @shell_exec($cmd);
-            $code = (is_string($out) && str_contains($out, 'No syntax errors') === false) ? 1 : 0;
+    foreach ($relativePaths as $relative) {
+        if (!str_ends_with(strtolower($relative), '.php')) {
+            continue;
         }
-        if ($code !== 0) {
+        $source = @file_get_contents(APP_ROOT . '/' . $relative);
+        if (!is_string($source)) {
+            $failures[] = $relative;
+            continue;
+        }
+        try {
+            token_get_all($source, TOKEN_PARSE);
+        } catch (ParseError $e) {
             $failures[] = $relative;
         }
     }
+
     return $failures;
 }
 
