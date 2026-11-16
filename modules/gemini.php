@@ -218,6 +218,14 @@ function generateQuestionsWithGemini($username, $token, $params = []): array
 
         $kesulitan = tostr($params['tingkat_kesulitan'] ?? '') !== '' ? tostr($params['tingkat_kesulitan']) : 'Sedang';
 
+        // Opsi "Tambahkan pembahasan" pada form Generate Soal AI: bila aktif,
+        // setiap butir soal wajib menyertakan field pembahasan.
+        $withPembahasan = in_array(
+            strtolower(trim(tostr($params['with_pembahasan'] ?? ''))),
+            ['1', 'true', 'ya', 'yes', 'on'],
+            true
+        );
+
         $alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
         $activeLetters = array_slice($alphabet, 0, $jmlOpsi);
         $opsiStr = implode(', ', $activeLetters);
@@ -234,14 +242,27 @@ function generateQuestionsWithGemini($username, $token, $params = []): array
             . "1. Soal harus jelas, tidak berbelit-belit, dan menguji pemahaman konsep atau penalaran sesuai tingkat kesulitan $kesulitan.\n"
             . "2. Setiap butir soal HARUS memiliki tepat $jmlOpsi pilihan jawaban (opsi_a sampai opsi_" . strtolower($lastLetter) . ").\n"
             . "3. Pilihan pengecoh (distractor) harus masuk akal, logis, dan mendidik.\n"
-            . "4. Kunci jawaban HARUS tepat salah satu dari huruf: $opsiStr.\n"
-            . "5. Output WAJIB HANYA berupa JSON Array murni tanpa tanda kutip markdown (```json) dan tanpa teks pembuka/penutup.\n\n"
-            . "Struktur JSON yang WAJIB dipatuhi:\n[\n  {\n    \"teks_soal\": \"Pertanyaan soal...\",\n";
+            . "4. Kunci jawaban HARUS tepat salah satu dari huruf: $opsiStr.\n";
+
+        if ($withPembahasan) {
+            $prompt .= "5. Setiap butir soal WAJIB menyertakan field \"pembahasan\": 2-4 kalimat bahasa Indonesia yang "
+                . "menjelaskan MENGAPA kunci jawaban benar dan mengapa opsi pengecoh salah "
+                . "(jangan menyalin ulang seluruh teks soal).\n"
+                . "6. Output WAJIB HANYA berupa JSON Array murni tanpa tanda kutip markdown (```json) dan tanpa teks pembuka/penutup.\n\n";
+        } else {
+            $prompt .= "5. Output WAJIB HANYA berupa JSON Array murni tanpa tanda kutip markdown (```json) dan tanpa teks pembuka/penutup.\n\n";
+        }
+
+        $prompt .= "Struktur JSON yang WAJIB dipatuhi:\n[\n  {\n    \"teks_soal\": \"Pertanyaan soal...\",\n";
 
         for ($i = 0; $i < $jmlOpsi; $i++) {
             $prompt .= '    "opsi_' . strtolower($alphabet[$i]) . '": "Pilihan teks ' . $alphabet[$i] . "...\",\n";
         }
-        $prompt .= "    \"kunci_jawaban\": \"A\"\n  }\n]";
+        $prompt .= "    \"kunci_jawaban\": \"A\""
+            . ($withPembahasan
+                ? ",\n    \"pembahasan\": \"Penjelasan alasan kunci jawaban benar dan mengapa opsi lain salah.\""
+                : '')
+            . "\n  }\n]";
 
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . urlencode($modelId)
             . ':generateContent?key=' . urlencode($apiKey);
@@ -303,6 +324,10 @@ function generateQuestionsWithGemini($username, $token, $params = []): array
                 'kunci_jawaban' => strtoupper(tostr($q['kunci_jawaban'] ?? 'A') ?: 'A'),
                 'bobot'         => 1,
             ];
+            // Pembahasan hanya diambil bila opsi "Tambahkan pembahasan" diminta.
+            if ($withPembahasan) {
+                $cleanQ['pembahasan'] = tostr($q['pembahasan'] ?? ($q['penjelasan'] ?? ''));
+            }
             for ($oIdx = 0; $oIdx < $jmlOpsi; $oIdx++) {
                 $letter = strtolower($alphabet[$oIdx]);
                 $oKey = 'opsi_' . $letter;

@@ -208,7 +208,7 @@ function update_version_key(string $suffix): string
     return $slug === '' ? $suffix : $suffix . ':' . $slug;
 }
 
-/** Versi terpasang (dari tabel settings; kosong bila belum pernah diperbarui). */
+/** Versi terpasang (dari tabel settings) + nama versi rilis (berkas VERSION). */
 function update_installed_version(): array
 {
     $version = update_setting_get(update_version_key('app_version'));
@@ -220,22 +220,68 @@ function update_installed_version(): array
         $updatedAt = update_setting_get('app_updated_at');
         $source = update_setting_get('app_update_source');
     }
+
+    // Nama versi rilis selalu dibaca dari berkas VERSION yang ikut diperbarui,
+    // sehingga angkanya sama dengan versi terpasang terkini (bukan hash commit).
+    $name = app_version_name();
+
     return [
         'version'    => $version,
         'updated_at' => $updatedAt,
         'source'     => $source,
         'short'      => $version !== '' ? substr($version, 0, 7) : '',
+        'name'       => $name,
+        'label'      => 'v' . $name,
     ];
 }
 
 /** Simpan versi baru ke settings. */
-function update_store_version(string $version, string $source): void
+function update_store_version(string $version, string $source, string $name = ''): void
 {
-    update_setting_put([
+    $pairs = [
         update_version_key('app_version')       => $version,
         update_version_key('app_updated_at')    => now_dt(),
         update_version_key('app_update_source') => $source,
-    ]);
+    ];
+    if ($name !== '') {
+        $pairs[update_version_key('app_version_name')] = $name;
+    }
+    update_setting_put($pairs);
+}
+
+/**
+ * Nama versi rilis yang tersedia di GitHub (berkas VERSION di branch utama).
+ * Best-effort: '' bila tidak dapat dihubungi.
+ */
+function update_remote_version_name(?string $ref = null): string
+{
+    static $cache = [];
+    $key = (string) ($ref ?? '');
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+    $cache[$key] = '';
+
+    if (trim((string) UPDATE_REPO_SLUG) === '') {
+        return '';
+    }
+
+    $path = $ref !== null && $ref !== '' ? $ref : 'refs/heads/' . UPDATE_BRANCH;
+    $url = 'https://raw.githubusercontent.com/' . UPDATE_REPO_SLUG . '/' . $path . '/VERSION';
+
+    $probe = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'cbt-ver-' . bin2hex(random_bytes(4)) . '.txt';
+    try {
+        update_download($url, $probe);
+        $cache[$key] = version_name_from_file($probe);
+    } catch (Throwable $e) {
+        $cache[$key] = '';
+    } finally {
+        if (is_file($probe)) {
+            @unlink($probe);
+        }
+    }
+
+    return $cache[$key];
 }
 
 /** Daftar berkas relatif yang boleh/tidak boleh ditimpa. */
@@ -257,6 +303,11 @@ function update_should_copy(string $relativePath): bool
         return true;
     }
     // Hanya berkas aplikasi yang di-deploy.
+    $base = basename($rel);
+    if ($base === 'VERSION') {
+        // Berkas penanda versi rilis (tanpa ekstensi) wajib ikut diperbarui.
+        return true;
+    }
     $ext = strtolower(pathinfo($rel, PATHINFO_EXTENSION));
     return in_array($ext, ['php', 'html', 'js', 'css', 'sql', 'md', 'json', 'txt', 'gitattributes', 'gitignore'], true)
         || in_array(basename($rel), ['.gitignore', '.gitattributes'], true);
@@ -318,8 +369,9 @@ function update_apply(string $username, string $token, bool $force = false): arr
             return [
                 'success'         => true,
                 'up_to_date'      => true,
-                'message'         => 'Aplikasi sudah versi terbaru (' . substr($newVersion, 0, 7) . '). Tidak ada perubahan.',
+                'message'         => 'Aplikasi sudah versi terbaru (' . $installed['label'] . '). Tidak ada perubahan.',
                 'current_version' => $installed['version'],
+                'current_name'    => $installed['name'],
                 'latest_version'  => $newVersion,
             ];
         }
@@ -348,6 +400,11 @@ function update_apply(string $username, string $token, bool $force = false): arr
         if ($sourceRoot === '' || !is_file($sourceRoot . '/index.php')) {
             throw new RuntimeException('Isi arsip tidak dikenali (index.php tidak ditemukan).');
         }
+
+        // Nama versi rilis dari arsip (berkas VERSION) — dipakai pada pesan hasil
+        // dan disimpan ke settings sebagai riwayat versi terpasang.
+        $newName = version_name_from_file($sourceRoot . '/VERSION');
+        $newLabel = $newName !== '' ? 'v' . $newName : substr($newVersion, 0, 7);
 
         // ------------------------------------------------- 3. daftar berkas baru
         $files = [];
@@ -442,17 +499,18 @@ function update_apply(string $username, string $token, bool $force = false): arr
         }
 
         // ------------------------------------------------------------- 8. simpan
-        update_store_version($newVersion, $remoteSha !== '' ? 'github' : 'archive');
+        update_store_version($newVersion, $remoteSha !== '' ? 'github' : 'archive', $newName);
         update_rmdir($tmp);
 
-        log_activity(tostr($username), 'Update Aplikasi', 'Versi ' . substr($newVersion, 0, 7)
+        log_activity(tostr($username), 'Update Aplikasi', 'Versi ' . $newLabel
             . ' (' . count($written) . ' berkas)');
 
         return [
             'success'         => true,
             'up_to_date'      => false,
-            'message'         => 'Aplikasi berhasil diperbarui ke versi ' . substr($newVersion, 0, 7) . '.',
+            'message'         => 'Aplikasi berhasil diperbarui ke versi ' . $newLabel . '.',
             'current_version' => $newVersion,
+            'current_name'    => $newName,
             'previous'        => $installed['version'],
             'remote'          => $remote,
             'files_updated'   => count($written),
@@ -529,6 +587,15 @@ function getApplicationVersion($username, $token): array
     $repoConfigured = trim((string) UPDATE_REPO_SLUG) !== '';
     $remote = update_remote_commit();
     $apiStatus = update_api_status();
+    $remoteSha = is_string($remote['sha'] ?? null) ? (string) $remote['sha'] : '';
+
+    // Nama versi rilis terbaru di GitHub (berkas VERSION). Kosong bila gagal.
+    $latestName = $remoteSha !== '' ? update_remote_version_name($remoteSha) : '';
+    if ($latestName === '' && $remoteSha !== '') {
+        $latestName = update_remote_version_name();
+    }
+
+    $nameChanged = $latestName !== '' && $installed['name'] !== '' && $latestName !== $installed['name'];
 
     return [
         'success'         => true,
@@ -536,12 +603,20 @@ function getApplicationVersion($username, $token): array
         'repo_configured' => $repoConfigured,
         'current_version' => $installed['version'],
         'current_short'   => $installed['short'],
+        'current_name'    => $installed['name'],
+        'current_label'   => $installed['label'],
         'updated_at'      => $installed['updated_at'],
-        'latest_version'  => $remote['sha'] ?? '',
+        'latest_version'  => $remoteSha,
         'latest_short'    => $remote['short'] ?? '',
+        'latest_name'     => $latestName,
+        'latest_label'    => $latestName !== '' ? ('v' . $latestName) : '',
         'latest_date'     => $remote['date'] ?? '',
         'latest_message'  => $remote['message'] ?? '',
-        'update_available' => $remote !== null && $installed['version'] !== $remote['sha'],
+        // Versi baru = nama rilis berbeda; bila nama sama namun commit berbeda,
+        // berkas tetap diperbarui (pembaruan tanpa naik nomor versi).
+        'version_changed'  => $nameChanged,
+        'commit_changed'   => $remote !== null && $installed['version'] !== $remoteSha,
+        'update_available' => $remote !== null && $installed['version'] !== $remoteSha,
         'repo'            => 'https://github.com/' . UPDATE_REPO_SLUG,
     ];
 }

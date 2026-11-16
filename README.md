@@ -1,6 +1,9 @@
 # CBT GAS — PHP 8 + MySQL
 
-**Versi rilis:** `1.0.0`
+**Versi rilis:** `1.0.3` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
+proyek (satu baris, mis. `1.0.3`). Berkas ini ikut tersalin saat pembaruan dari GitHub,
+sehingga label versi di **kartu Pembaruan Aplikasi** dan di **halaman login** otomatis
+berganti. Naikkan isinya setiap kali merilis versi baru.
 
 Aplikasi **Computer Based Test (CBT)** untuk sekolah: bank soal, ujian berjadwal, token ujian,
 pengacakan soal/opsi, penilaian otomatis, pembahasan, kartu ujian, monitoring pelanggaran,
@@ -298,6 +301,9 @@ Login `admin / admin123` → urutan yang disarankan:
    untuk ditempel ke chatbot AI lain, lalu JSON hasilnya ditempel kembali dan dikonversi
    menjadi butir soal. **Jumlah soal tanpa batas**: permintaan besar (mis. 100+ butir)
    dipecah otomatis menjadi beberapa tahap Generate lalu digabung dalam satu review.
+   Centang **Tambahkan pembahasan** agar setiap butir soal yang dibuat menyertakan
+   pembahasan kunci jawaban (berlaku untuk provider Gemini maupun Lainnya); pembahasan
+   masih bisa diedit pada tahap review sebelum disimpan ke bank soal.
 10. **Uji coba**: login sebagai siswa di jendela incognito, kerjakan satu ujian, pastikan
     timer, watermark, autosave, pengumpulan, nilai, dan pembahasan berjalan.
 11. **Kartu Ujian** — cetak kartu peserta (logo sekolah ikut tercetak).
@@ -385,10 +391,13 @@ hasil restore sesuai lokasi sekolah — semua `DATETIME` disimpan sebagai jam di
 Login sebagai **Admin &rarr; Pengaturan &rarr; kartu Pembaruan Aplikasi**:
 
 - **Cek Versi** &mdash; membandingkan versi terpasang dengan `main` di
-  `github.com/harumwibowo/cbt-gas-php` (tanpa mengubah berkas).
+  `github.com/harumwibowo/cbt-gas-php` (tanpa mengubah berkas). Yang ditampilkan adalah
+  **nama versi rilis** (mis. `v1.0.3`, dari berkas `VERSION`), bukan hash commit; hash
+  commit tetap ditampilkan kecil di bawahnya untuk pembanding.
 - **Update** &mdash; mengunduh arsip repo, mencadangkan berkas lama ke
-  `storage/backups/update-YYYYmmdd-HHMMSS/`, menimpa berkas aplikasi, memeriksa sintaks
-  setiap berkas PHP, lalu menyimpan versi baru di tabel `settings`.
+  `storage/backups/update-YYYYmmdd-HHMMSS/`, menimpa berkas aplikasi (termasuk `VERSION`),
+  memeriksa sintaks setiap berkas PHP, lalu menyimpan versi baru di tabel `settings`.
+  Setelah pembaruan, label versi di halaman login ikut berganti otomatis.
 
 Yang **tidak** pernah ditimpa: `config/database.json`, `config/pass.key`,
 `config/installed.json`, folder `storage/`. Data siswa, soal,
@@ -418,6 +427,7 @@ cbt-gas-php/
 ├── media.php                 # Penyaji gambar dari database: GET media.php?id=MED-XXXXXXXX
 ├── favicon.php               # Favicon = logo sekolah (otomatis 64×64 PNG)
 ├── Index.html                # Seluruh UI (SPA) — sama seperti versi Apps Script
+├── VERSION                   # Nama versi rilis (dipakai kartu Pembaruan & halaman login)
 ├── assets/js/rpc-shim.js     # Emulasi google.script.run → api.php
 ├── config/config.php         # Kredensial DB (env-overridable), batas unggah, zona waktu default
 ├── database/schema.sql       # Skema 9 tabel (idempotent)
@@ -427,6 +437,7 @@ cbt-gas-php/
 │   ├── crypto.php            # AES-256-GCM untuk password_enc (kartu ujian)
 │   ├── setup.php             # Deteksi instal baru, uji koneksi, simpan kredensial
 │   ├── update.php            # Pembaruan aplikasi dari GitHub (+ rollback)
+│   ├── version.php           # Nama versi rilis dari berkas VERSION
 │   ├── auth.php              # Login/logout, hash password, validasi sesi, peran
 │   └── settings.php          # Pengaturan, kebijakan pelanggaran global, zona waktu
 ├── tools/

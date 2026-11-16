@@ -381,7 +381,7 @@
       </form>
 
       <div class="mt-8 pt-5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-medium">
-        <span>GAS CBT Engine v2.0</span>
+        <span id="login-version-label">GAS CBT Engine</span>
         <span class="flex items-center gap-1 font-semibold text-slate-500"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-500"></i> Sistem Aman</span>
       </div>
     </div>
@@ -1020,6 +1020,7 @@
                 <div class="space-y-1.5">
                   <label class="block text-xs font-bold uppercase text-slate-500">Versi Terpasang</label>
                   <p class="text-sm font-mono font-bold text-slate-700" id="app-version-current">memuat...</p>
+                  <p class="text-[11px] text-slate-400 font-mono" id="app-version-commit"></p>
                   <p class="text-xs text-slate-400">Diperbarui: <span id="app-update-time" class="font-semibold text-slate-500">-</span></p>
                   <p class="text-xs text-slate-400" id="app-update-latest">Tekan <strong class="text-slate-500">Cek Versi</strong> untuk membandingkan dengan repositori.</p>
                 </div>
@@ -2067,6 +2068,15 @@
               </select>
             </div>
           </div>
+
+          <!-- Opsi tambahan: sertakan pembahasan pada setiap butir soal -->
+          <label for="ai-param-pembahasan" class="flex items-start gap-3 p-3.5 rounded-2xl border border-purple-200 bg-purple-50/60 hover:bg-purple-50 transition cursor-pointer select-none">
+            <input type="checkbox" id="ai-param-pembahasan" onchange="onAiPembahasanToggle(this.checked)" class="mt-0.5 w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer">
+            <span class="min-w-0">
+              <span class="block text-xs font-bold text-purple-800">Tambahkan pembahasan</span>
+              <span class="block text-[11px] text-purple-600/90 leading-relaxed" id="ai-pembahasan-hint">Setiap butir soal yang dihasilkan menyertakan pembahasan / alasan kunci jawaban. Pembahasan dapat diperiksa dan diedit pada tahap review.</span>
+            </span>
+          </label>
 
           <!-- Provider "Lainnya": slot ini menampung tombol Generate Prompt
                sehingga tombol berada di ATAS area copy-paste Prompt & JSON -->
@@ -3162,6 +3172,8 @@
       teacherData: { exams: [], activeExamId: null, questions: [], texts: [], availableClasses: [], availableSessions: [], availableStudents: [] },
       bankSoalTab: 'questions',
       printCardsStudents: [],
+      // Nama versi rilis (dari berkas VERSION, dikirim getSettings) — dipakai label versi di halaman login
+      appVersion: '',
       studentData: { exams: [] },
       settings: {
         nama_sekolah: 'GAS Exam Platform',
@@ -4171,26 +4183,39 @@
     // ==========================================
     function renderApplicationVersion(res) {
       const cur = document.getElementById('app-version-current');
+      const commitEl = document.getElementById('app-version-commit');
       const time = document.getElementById('app-update-time');
       const latest = document.getElementById('app-update-latest');
       const badge = document.getElementById('app-update-badge');
       if (!cur) return;
 
+      // Tampilkan NAMA VERSI RILIS (mis. v1.0.3) — bukan hash commit.
       const short = (res.current_short || '').trim();
-      cur.textContent = short ? short : 'belum pernah diperbarui';
+      const nameLabel = String(res.current_label || (res.current_name ? 'v' + res.current_name : '')).trim();
+      cur.textContent = nameLabel || (short ? 'commit ' + short : 'belum pernah diperbarui');
+      if (res.current_name) setAppVersionLabel(res.current_name);
+      if (commitEl) {
+        commitEl.textContent = (nameLabel && short) ? 'commit ' + short : '';
+      }
       if (time) {
         time.textContent = res.updated_at
           ? new Date(String(res.updated_at).replace(' ', 'T')).toLocaleString('id-ID')
           : '-';
       }
 
+      const latestLabel = String(res.latest_label || '').trim();
+      const latestShort = String(res.latest_short || '').trim();
+
       if (badge) {
         badge.classList.remove('hidden', 'bg-amber-50', 'text-amber-700', 'border-amber-200',
           'bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
-        if (res.update_available) {
+        if (res.version_changed) {
           badge.textContent = 'Versi baru tersedia';
           badge.classList.add('bg-amber-50', 'text-amber-700', 'border-amber-200');
-        } else if (res.latest_short) {
+        } else if (res.commit_changed) {
+          badge.textContent = 'Pembaruan berkas tersedia';
+          badge.classList.add('bg-amber-50', 'text-amber-700', 'border-amber-200');
+        } else if (latestLabel || latestShort) {
           badge.textContent = 'Versi terbaru';
           badge.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
         }
@@ -4207,15 +4232,30 @@
         } else if (res.api_status === 404) {
           latest.innerHTML = 'Repositori <strong class="text-slate-600">tidak ditemukan</strong> atau tidak bersifat publik. '
             + 'Pastikan repo <strong class="text-slate-600">' + String(res.repo || '').replace('https://github.com/', '') + '</strong> tetap publik.';
-        } else if (!res.latest_short) {
+        } else if (!latestLabel && !latestShort) {
           latest.innerHTML = 'Tidak dapat menghubungi GitHub. Periksa koneksi server, lalu coba lagi.';
-        } else if (res.update_available) {
-          latest.innerHTML = 'Terbaru di GitHub: <strong class="text-amber-600 font-mono">' + res.latest_short + '</strong>'
+        } else if (res.version_changed) {
+          latest.innerHTML = 'Versi terbaru di GitHub: <strong class="text-amber-600 font-mono">' + latestLabel + '</strong>'
+            + (latestShort ? ' <span class="font-mono text-slate-400">(commit ' + latestShort + ')</span>' : '')
             + (res.latest_message ? ' &middot; ' + res.latest_message : '');
+        } else if (res.commit_changed) {
+          latest.innerHTML = 'Nomor versi sama (<strong class="text-slate-600 font-mono">' + (latestLabel || nameLabel) + '</strong>), '
+            + 'namun ada perubahan berkas di GitHub (commit <span class="font-mono text-slate-500">' + latestShort + '</span>). '
+            + 'Tekan <strong class="text-slate-600">Update</strong> untuk menyelaraskan berkas.';
         } else {
-          latest.innerHTML = 'Sudah memakai versi terbaru (<strong class="text-emerald-600 font-mono">' + res.latest_short + '</strong>).';
+          latest.innerHTML = 'Sudah memakai versi terbaru (<strong class="text-emerald-600 font-mono">'
+            + (latestLabel || nameLabel) + '</strong>).';
         }
       }
+    }
+
+    /** Terapkan nama versi rilis pada label versi di halaman login. */
+    function setAppVersionLabel(name) {
+      const clean = String(name || '').replace(/^v/i, '').trim();
+      if (!clean) return;
+      AppState.appVersion = clean;
+      const el = document.getElementById('login-version-label');
+      if (el) el.textContent = 'GAS CBT Engine v' + clean;
     }
 
     function loadApplicationVersion(silent = true) {
@@ -4241,7 +4281,7 @@
           if (res && res.success) {
             renderApplicationVersion(res);
             showToast(res.update_available
-              ? 'Versi baru tersedia: ' + res.latest_short
+              ? 'Pembaruan tersedia: ' + (res.latest_label || res.latest_short)
               : 'Aplikasi sudah versi terbaru.', res.update_available ? 'info' : 'success');
           } else {
             showToast((res && res.message) || 'Gagal memeriksa versi.', 'error');
@@ -4311,6 +4351,7 @@
         .withSuccessHandler(res => {
           if (res && res.success && res.settings) {
             AppState.settings = res.settings;
+            if (res.app_version) setAppVersionLabel(res.app_version);
             applyBrandingSettings();
             populateSettingsForm();
             if (typeof loadApplicationVersion === 'function') loadApplicationVersion(true);
@@ -4383,6 +4424,9 @@
 
       // Update Browser Title
       document.title = `${namaSekolah} - Platform Ujian Online`;
+
+      // Label versi rilis pada kartu login (mengikuti berkas VERSION / hasil pembaruan)
+      if (AppState.appVersion) setAppVersionLabel(AppState.appVersion);
 
       // Update Login Card Branding
       const brandTitle = document.getElementById('login-brand-title');
@@ -9029,6 +9073,24 @@
     }
 
     /**
+     * Opsi "Tambahkan pembahasan": bila dicentang, setiap butir soal yang dibuat
+     * menyertakan field pembahasan (berlaku untuk provider Gemini & Lainnya).
+     */
+    function aiIncludePembahasan() {
+      const el = document.getElementById('ai-param-pembahasan');
+      return !!(el && el.checked);
+    }
+
+    /** Umpan balik singkat saat opsi pembahasan diubah. */
+    function onAiPembahasanToggle(checked) {
+      const hint = document.getElementById('ai-pembahasan-hint');
+      if (!hint) return;
+      hint.innerText = checked
+        ? 'Pembahasan akan dibuat untuk setiap butir soal dan bisa diedit pada tahap review.'
+        : 'Setiap butir soal yang dihasilkan menyertakan pembahasan / alasan kunci jawaban. Pembahasan dapat diperiksa dan diedit pada tahap review.';
+    }
+
+    /**
      * Posisi tombol utama form AI:
      * - gemini  : tetap di footer form (bersama tombol Batal).
      * - lainnya : dipindah ke ATAS area copy-paste Prompt & JSON.
@@ -9095,6 +9157,18 @@
       const contohOpsi = opsiKeys.map((k, i) => `    "${k}": "Pilihan ${letters[i]} contoh",`).join('\n');
       const contohKunci = letters[1] || letters[0];
 
+      // Opsi "Tambahkan pembahasan" pada form: chatbot wajib menyertakan pembahasan.
+      const withPembahasan = !!p.pembahasan;
+      const fieldList = withPembahasan
+        ? `"teks_soal", ${opsiKeys.map(k => '"' + k + '"').join(', ')}, "kunci_jawaban", dan "pembahasan"`
+        : `"teks_soal", ${opsiKeys.map(k => '"' + k + '"').join(', ')}, dan "kunci_jawaban"`;
+      const aturanPembahasan = withPembahasan
+        ? '\n8. Field "pembahasan" WAJIB ada pada setiap objek: 2-4 kalimat bahasa Indonesia yang menjelaskan MENGAPA kunci jawaban benar dan mengapa opsi pengecoh salah (tanpa menyalin ulang seluruh teks soal).'
+        : '';
+      const contohPembahasan = withPembahasan
+        ? ',\n    "pembahasan": "Penjelasan singkat alasan kunci jawaban benar dan mengapa opsi lain salah."'
+        : '';
+
       return `Anda adalah guru ahli dan pembuat soal evaluasi profesional di Indonesia.
 Buatlah tepat ${jmlSoal} butir soal pilihan ganda dengan ketentuan berikut:
 - Mata Pelajaran: ${p.mapel}
@@ -9108,21 +9182,21 @@ ATURAN YANG WAJIB DIPATUHI:
 2. Setiap butir soal HARUS memiliki tepat ${letters.length} pilihan jawaban: ${opsiSyarat} — tidak kurang dan tidak lebih.
 3. Pilihan pengecoh (distractor) harus masuk akal, logis, dan mendidik; hanya satu jawaban yang benar.
 4. Field "kunci_jawaban" HARUS berupa HURUF BESAR tunggal tepat dari: ${letters.join(', ')}.
-5. Field yang boleh ada pada tiap objek hanyalah: "teks_soal", ${opsiKeys.map(k => '"' + k + '"').join(', ')}, dan "kunci_jawaban".
+5. Field yang boleh ada pada tiap objek hanyalah: ${fieldList}.
 6. Jumlah objek dalam array WAJIB tepat ${jmlSoal} — jangan lebih dan jangan kurang. Jika setelah menulis ternyata jumlahnya melebihi ${jmlSoal}, hapus soal berlebihannya sampai tepat ${jmlSoal} sebelum mengirim jawaban.
 7. Keluaran HANYA berupa JSON array murni yang dimulai dengan [ dan diakhiri dengan ]:
    - DILARANG menambahkan teks apa pun sebelum atau sesudah JSON (tanpa sapaan, tanpa penjelasan, tanpa penutup).
    - DILARANG menambahkan Markdown code fence (\`\`\` atau \`\`\`json), komentar, atau markdown apa pun.
    - DILARANG membungkus array dalam objek seperti {"questions": [...]} atau {"soal": [...]}.
    - Gunakan tanda kutip standar JSON (") dan escape tanda kutip di dalam teks dengan \\".
-   - Seluruh isi soal ditulis dalam bahasa Indonesia dengan UTF-8.
+   - Seluruh isi soal ditulis dalam bahasa Indonesia dengan UTF-8.${aturanPembahasan}
 
 STRUKTUR JSON YANG WAJIB DIPATUHI (contoh hanya menunjukkan struktur — buat soal sesuai topik di atas):
 [
   {
     "teks_soal": "Pertanyaan contoh?",
 ${contohOpsi}
-    "kunci_jawaban": "${contohKunci}"
+    "kunci_jawaban": "${contohKunci}"${contohPembahasan}
   }
 ]
 
@@ -9232,6 +9306,10 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
           kunci_jawaban: 'A',
           bobot: 1
         };
+
+        // Pembahasan (opsional): ikut dibawa bila chatbot/AI menyertakannya.
+        const pembahasan = String(item.pembahasan ?? item.penjelasan ?? item.pembahasan_soal ?? '').trim();
+        if (pembahasan) clean.pembahasan = pembahasan;
 
         let filled = 0;
         for (let i = 0; i < AI_ALPHABET.length; i++) {
@@ -9392,6 +9470,8 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       const jmlSoal = Math.max(parseInt(document.getElementById('ai-param-jumlah-soal').value, 10) || 5, 1);
       const jmlOpsi = parseInt(document.getElementById('ai-param-jumlah-opsi').value, 10) || 5;
       const kesulitan = document.getElementById('ai-param-kesulitan').value;
+      // Opsi "Tambahkan pembahasan" berlaku untuk kedua provider (Gemini & Lainnya).
+      const withPembahasan = aiIncludePembahasan();
 
       if (!mapel || !kelas || !topik) {
         showToast('Harap lengkapi Mata Pelajaran, Kelas, dan Topik Materi.', 'error');
@@ -9404,7 +9484,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       if (aiProviderValue() === 'lainnya') {
         const promptArea = document.getElementById('ai-prompt-text');
         if (promptArea) {
-          promptArea.value = buildAiManualPrompt({ mapel, kelas, topik, jmlSoal, jmlOpsi, kesulitan });
+          promptArea.value = buildAiManualPrompt({ mapel, kelas, topik, jmlSoal, jmlOpsi, kesulitan, pembahasan: withPembahasan });
         }
         showToast('Prompt berhasil dibuat. Salin ke chatbot AI lain, lalu tempel JSON balasannya ke kolom JSON.', 'success');
         const jsonArea = document.getElementById('ai-json-text');
@@ -9425,7 +9505,8 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         topik: topik,
         jumlah_soal: jmlSoal,
         jumlah_opsi: jmlOpsi,
-        tingkat_kesulitan: kesulitan
+        tingkat_kesulitan: kesulitan,
+        with_pembahasan: withPembahasan
       };
 
       // Model dipilih pada form ini (bukan lagi di halaman Pengaturan) —
@@ -9538,6 +9619,11 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
               ${optionsHtml}
             </div>
           </div>
+
+          <div class="pt-1">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Pembahasan <span class="font-normal text-slate-400">(opsional)</span></label>
+            <textarea data-q-index="${index}" class="ai-pembahasan-input w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/40 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 leading-relaxed" rows="2" placeholder="Alasan kunci jawaban / pembahasan soal...">${escapeHtml(q.pembahasan || '')}</textarea>
+          </div>
         `;
 
         container.appendChild(card);
@@ -9575,10 +9661,12 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         const textInput = card.querySelector('.ai-text-input');
         const keySelect = card.querySelector('.ai-key-select');
         const optInputs = card.querySelectorAll('.ai-opt-input');
+        const pembahasanInput = card.querySelector('.ai-pembahasan-input');
 
         const qObj = {
           teks_soal: textInput ? textInput.value.trim() : '',
           kunci_jawaban: keySelect ? keySelect.value : 'A',
+          pembahasan: pembahasanInput ? pembahasanInput.value.trim() : '',
           bobot: 1
         };
 

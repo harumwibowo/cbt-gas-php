@@ -45,13 +45,18 @@ function settings_map(): array
     return $settings;
 }
 
-/** Endpoint publik getSettings: { success, settings }. */
+/** Endpoint publik getSettings: { success, settings }.
+ *
+ * `app_version` = nama versi rilis dari berkas VERSION (dipakai label versi di
+ * halaman login, sehingga ikut berganti setelah pembaruan aplikasi).
+ */
 function get_settings(): array
 {
     return [
-        'success'  => true,
-        'settings' => settings_map(),
-        'timezone' => timezone_info(),
+        'success'     => true,
+        'settings'    => settings_map(),
+        'timezone'    => timezone_info(),
+        'app_version' => app_version_name(),
     ];
 }
 

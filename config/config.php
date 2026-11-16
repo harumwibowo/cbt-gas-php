@@ -58,6 +58,7 @@ define('APP_ROOT', dirname(__DIR__));
 
 require_once APP_ROOT . '/lib/db.php';
 require_once APP_ROOT . '/lib/helpers.php';
+require_once APP_ROOT . '/lib/version.php';
 require_once APP_ROOT . '/lib/crypto.php';
 require_once APP_ROOT . '/lib/auth.php';
 require_once APP_ROOT . '/lib/settings.php';
