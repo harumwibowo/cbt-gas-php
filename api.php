@@ -52,7 +52,7 @@ const ALLOWED_ACTIONS = [
     // AI (Gemini)
     'getGeminiModels', 'testGeminiConnection', 'generateQuestionsWithGemini',
     // Pemeliharaan aplikasi
-    'updateApplication', 'getApplicationVersion', 'setUpdateToken',
+    'updateApplication', 'getApplicationVersion',
 ];
 
 /** Ambil action dari query string. */

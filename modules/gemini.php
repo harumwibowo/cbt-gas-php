@@ -157,7 +157,13 @@ function testGeminiConnection($apiKey = '', $modelId = ''): array
     }
 }
 
-/** Generate butir soal pilihan ganda dengan Gemini. */
+/**
+ * Generate butir soal pilihan ganda dengan Gemini.
+ *
+ * @param array $params mata_pelajaran, kelas, topik, jumlah_soal, jumlah_opsi,
+ *                      tingkat_kesulitan, dan opsional `model` (pilihan model
+ *                      dari form Generate Soal AI; disimpan sebagai model aktif).
+ */
 function generateQuestionsWithGemini($username, $token, $params = []): array
 {
     if (!validate_session($username, $token)) {
@@ -169,11 +175,29 @@ function generateQuestionsWithGemini($username, $token, $params = []): array
         $apiKey = trim(tostr($settings['gemini_api_key'] ?? ''));
         $modelId = preg_replace('#^models/#', '', trim(tostr($settings['gemini_model'] ?? '')) ?: 'gemini-2.0-flash');
 
+        // Pilihan model kini berada pada form Generate Soal AI (dipindahkan dari
+        // halaman Pengaturan). Bila dikirim, model dipakai untuk request ini dan
+        // disimpan sebagai model aktif agar tetap terpilih pada kunjungan berikutnya.
+        $params = is_array($params) ? $params : [];
+        $modelParam = preg_replace('#^models/#', '', trim(tostr($params['model'] ?? '')));
+        if ($modelParam !== '' && preg_match('/^[A-Za-z0-9._-]{1,100}$/', $modelParam) && $modelParam !== $modelId) {
+            $exists = (int) db_val('SELECT COUNT(*) FROM settings WHERE kunci = ?', ['gemini_model'], 0);
+            if ($exists > 0) {
+                db_exec('UPDATE settings SET nilai = ? WHERE kunci = ?', [$modelParam, 'gemini_model']);
+            } else {
+                $desc = settings_descriptions()['gemini_model'] ?? 'Model Gemini yang digunakan untuk generate konten';
+                db_exec('INSERT INTO settings (kunci, nilai, keterangan) VALUES (?,?,?)', ['gemini_model', $modelParam, $desc]);
+            }
+            log_activity(tostr($username), 'Update Settings', 'Model Gemini generate soal diubah ke "' . $modelParam . '".');
+        }
+        if ($modelParam !== '') {
+            $modelId = $modelParam;
+        }
+
         if ($apiKey === '') {
             return err('API Key Gemini belum disetting. Silakan minta Administrator untuk mengatur API Key di menu Pengaturan Aplikasi.');
         }
 
-        $params = is_array($params) ? $params : [];
         $mapel = tostr($params['mata_pelajaran'] ?? '') !== '' ? tostr($params['mata_pelajaran']) : 'Umum';
         $kelas = tostr($params['kelas'] ?? '') !== '' ? tostr($params['kelas']) : 'Umum';
         $topik = tostr($params['topik'] ?? '') !== '' ? tostr($params['topik']) : 'Umum';
@@ -184,11 +208,13 @@ function generateQuestionsWithGemini($username, $token, $params = []): array
         }
         $jmlOpsi = max(3, min(10, $jmlOpsi));
 
+        // Tanpa batas atas jumlah soal. Permintaan besar dipecah menjadi
+        // beberapa panggilan kecil oleh klien (AI_GEN_CHUNK_SIZE di Index.html)
+        // agar aman dari batas output token model.
         $jmlSoal = (int) ($params['jumlah_soal'] ?? 0);
         if ($jmlSoal <= 0) {
             $jmlSoal = 5;
         }
-        $jmlSoal = max(1, min(20, $jmlSoal));
 
         $kesulitan = tostr($params['tingkat_kesulitan'] ?? '') !== '' ? tostr($params['tingkat_kesulitan']) : 'Sedang';
 

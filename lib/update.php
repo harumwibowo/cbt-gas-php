@@ -1,6 +1,6 @@
 <?php
 /**
- * Pembaruan aplikasi langsung dari repositori GitHub.
+ * Pembaruan aplikasi langsung dari repositori GitHub (publik — tanpa token).
  *
  * Alur: unduh arsip tar.gz branch utama → bandingkan versi → cadangkan berkas
  * yang akan ditimpa → salin → periksa sintaks PHP → (gagal = kembalikan cadangan).
@@ -15,63 +15,15 @@ const UPDATE_BRANCH       = 'main';
 const UPDATE_BACKUP_DIR   = 'storage/backups';
 const UPDATE_TIMEOUT      = 60;
 
-/** Berkas token GitHub (untuk repositori privat) — tidak pernah dikirim ke klien. */
-function update_token_path(): string
-{
-    return APP_ROOT . '/config/update_token.txt';
-}
-
-/** Token GitHub opsional: environment CBT_UPDATE_TOKEN atau config/update_token.txt. */
-function update_token(): string
-{
-    $env = getenv('CBT_UPDATE_TOKEN');
-    if (is_string($env) && trim($env) !== '') {
-        return trim($env);
-    }
-    $file = update_token_path();
-    if (is_file($file)) {
-        $raw = @file_get_contents($file);
-        if (is_string($raw) && trim($raw) !== '') {
-            return trim($raw);
-        }
-    }
-    return '';
-}
-
-/** Simpan/hapus token GitHub (hanya untuk Admin, lihat setUpdateToken). */
-function update_token_store(string $token): bool
-{
-    $token = trim($token);
-    $file = update_token_path();
-    if ($token === '') {
-        if (is_file($file)) {
-            return @unlink($file);
-        }
-        return true;
-    }
-    if (@file_put_contents($file, $token . "
-") === false) {
-        return false;
-    }
-    @chmod($file, 0600);
-    return true;
-}
-
-/** Header HTTP untuk unduhan/API (menyertakan token bila ada). */
+/** Header HTTP untuk unduhan/API (repositori publik: tanpa autentikasi). */
 function update_http_headers(): array
 {
-    $headers = ['Accept: application/vnd.github+json', 'User-Agent: cbt-gas-php-updater'];
-    $token = update_token();
-    if ($token !== '') {
-        $headers[] = 'Authorization: Bearer ' . $token;
-    }
-    return $headers;
+    return ['Accept: application/vnd.github+json', 'User-Agent: cbt-gas-php-updater'];
 }
 
 /**
- * URL arsip sumber pembaruan.
- * Repo publik: codeload. Repo privat (token tersedia): endpoint API tarball.
- * CBT_UPDATE_URL menimpa keduanya (dipakai untuk uji/mirror internal).
+ * URL arsip sumber pembaruan (repositori publik → codeload).
+ * CBT_UPDATE_URL menimpa (dipakai untuk uji/mirror internal).
  */
 function update_archive_url(?string $ref = null): string
 {
@@ -81,9 +33,6 @@ function update_archive_url(?string $ref = null): string
     }
     if ($ref !== null && $ref !== '') {
         return 'https://codeload.github.com/' . UPDATE_REPO_SLUG . '/tar.gz/' . $ref;
-    }
-    if (update_token() !== '') {
-        return 'https://api.github.com/repos/' . UPDATE_REPO_SLUG . '/tarball/' . UPDATE_BRANCH;
     }
     return 'https://codeload.github.com/' . UPDATE_REPO_SLUG . '/tar.gz/refs/heads/' . UPDATE_BRANCH;
 }
@@ -147,7 +96,8 @@ function update_download(string $url, string $destination): void
         // Status 0 = protokol non-HTTP (mis. file:// untuk uji/mirror internal).
         if ($ok === false || ($status !== 200 && $status !== 0)) {
             $hint = ($status === 404 || $status === 401 || $status === 403)
-                ? ' Repositori bersifat privat atau token GitHub belum diisi: isi token pada kartu Pembaruan Aplikasi.'
+                ? ' Repositori atau branch tidak ditemukan: pastikan repo tetap publik dan branch "'
+                    . UPDATE_BRANCH . '" tersedia.'
                 : '';
             throw new RuntimeException('Unduhan gagal (HTTP ' . $status . ').' . $hint . ' ' . $err);
         }
@@ -171,8 +121,8 @@ function update_download(string $url, string $destination): void
 /**
  * Status HTTP terakhir saat membaca API GitHub (0 = tidak terhubung).
  *
- * Dipakai membedakan "repositori privat" (404) dari "kuota API habis" (403/429)
- * agar pesan pada kartu Pembaruan tidak menyesatkan.
+ * Dipakai membedakan "repositori tidak ditemukan/privat" (404) dari "kuota API habis"
+ * (403/429) agar pesan pada kartu Pembaruan tidak menyesatkan.
  */
 function update_api_status(?int $set = null): int
 {
@@ -313,6 +263,21 @@ function update_should_copy(string $relativePath): bool
 }
 
 /**
+ * Bersihkan sisa token lama.
+ *
+ * Fitur token dihapus karena repositori kini publik; berkas token lama di
+ * instalasi yang sudah diperbarui tidak boleh tertinggal di disk.
+ */
+function update_cleanup_legacy_token(): void
+{
+    $file = APP_ROOT . '/config/update_token.txt';
+    if (is_file($file)) {
+        @unlink($file);
+        error_log('[CBT update] sisa token lama dihapus: config/update_token.txt');
+    }
+}
+
+/**
  * Terapkan pembaruan.
  *
  * @param bool $force Paksa salin walau versi sama (mis. untuk memperbaiki berkas rusak).
@@ -326,6 +291,8 @@ function update_apply(string $username, string $token, bool $force = false): arr
     if (current_role($username) !== 'admin') {
         return err('Akses ditolak. Hanya Admin yang dapat memperbarui aplikasi.');
     }
+
+    update_cleanup_legacy_token();
 
     $root = APP_ROOT;
     $tmp = '';
@@ -561,17 +528,12 @@ function getApplicationVersion($username, $token): array
     $installed = update_installed_version();
     $repoConfigured = trim((string) UPDATE_REPO_SLUG) !== '';
     $remote = update_remote_commit();
-    $tokenSet = update_token() !== '';
     $apiStatus = update_api_status();
-    $repoPrivate = $repoConfigured && $remote === null && !$tokenSet && $apiStatus === 404;
 
     return [
         'success'         => true,
-        'token_set'       => $tokenSet,
         'api_status'      => $apiStatus,
         'repo_configured' => $repoConfigured,
-        'repo_private'    => $repoPrivate,
-        'needs_token'     => $repoPrivate,
         'current_version' => $installed['version'],
         'current_short'   => $installed['short'],
         'updated_at'      => $installed['updated_at'],
@@ -581,35 +543,6 @@ function getApplicationVersion($username, $token): array
         'latest_message'  => $remote['message'] ?? '',
         'update_available' => $remote !== null && $installed['version'] !== $remote['sha'],
         'repo'            => 'https://github.com/' . UPDATE_REPO_SLUG,
-    ];
-}
-
-/** Simpan token GitHub (untuk repositori privat). Admin saja. */
-function setUpdateToken($username, $token, $githubToken): array
-{
-    if (!validate_session($username, $token)) {
-        return err('Sesi kedaluwarsa. Silakan login kembali.');
-    }
-    if (current_role($username) !== 'admin') {
-        return err('Akses ditolak. Hanya Admin yang dapat mengubah token pembaruan.');
-    }
-
-    $value = trim(tostr($githubToken));
-    if ($value !== '' && !preg_match('/^[A-Za-z0-9_\-]{20,255}$/', $value)) {
-        return err('Format token tidak valid. Gunakan Personal Access Token GitHub (huruf, angka, - dan _).');
-    }
-    if (!update_token_store($value)) {
-        return err('Token tidak dapat disimpan. Pastikan folder config/ dapat ditulis web server.');
-    }
-
-    log_activity(tostr($username), 'Update Aplikasi', $value === '' ? 'Token GitHub dihapus' : 'Token GitHub diperbarui');
-
-    return [
-        'success'   => true,
-        'token_set' => $value !== '',
-        'message'   => $value === ''
-            ? 'Token GitHub dihapus. Pembaruan hanya bisa mengambil repositori publik.'
-            : 'Token GitHub tersimpan. Coba tombol Cek Versi sekarang.',
     ];
 }
 

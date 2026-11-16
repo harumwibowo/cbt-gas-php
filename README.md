@@ -1,8 +1,10 @@
 # CBT GAS — PHP 8 + MySQL
 
+**Versi rilis:** `1.0.0`
+
 Aplikasi **Computer Based Test (CBT)** untuk sekolah: bank soal, ujian berjadwal, token ujian,
 pengacakan soal/opsi, penilaian otomatis, pembahasan, kartu ujian, monitoring pelanggaran,
-dan generator soal dengan AI Gemini.
+dan generator soal dengan AI (Google Gemini, atau chatbot AI lain melalui alur Prompt &rarr; JSON).
 
 Aplikasi ini adalah konversi 1:1 dari versi **Google Apps Script + Google Sheets** ke
 **PHP native + MySQL**. Seluruh fitur asli dipertahankan (67 fungsi backend, 44 action RPC),
@@ -283,14 +285,19 @@ Login `admin / admin123` → urutan yang disarankan:
    dan tindakan saat batas tercapai (*Auto-Submit* / *Auto-Blokir* / *Hanya Catat*).
    Berlaku **global untuk semua ujian**.
 5. **Pengaturan → AI Gemini** (opsional) — isi API key untuk membuat soal otomatis,
-   lalu tekan **Tes Koneksi**.
+   lalu tekan **Tes Koneksi**. Pilihan *model* kini berada di form **Generate Soal AI**
+   (paling atas), bukan lagi di halaman ini.
 6. **Sesi Ujian** — tambah/ubah sesi (mis. "Sesi 1 (07.30–09.30)").
 7. **Pengguna** — tambah guru & siswa satu per satu, atau **Impor** massal
    (tempel data `username, nama, password, role, kelas, sesi, nisn`).
 8. **Buat Ujian** (menu Guru/Admin) — nama, durasi, jadwal mulai/selesai, kelas & sesi
    sasaran, token, jumlah soal tampil, jumlah percobaan, acak soal/opsi, tampilkan pembahasan.
 9. **Bank Soal** — tambah butir soal (teks stimulan, **gambar diunggah langsung ke database**,
-   opsi A–J, kunci jawaban, bobot), atau **Impor** dari Excel, atau **Generate** dengan Gemini.
+   opsi A–J, kunci jawaban, bobot), atau **Impor** dari Excel, atau **Generate** dengan AI:
+   pilih provider **Gemini** (otomatis) maupun **Lainnya** — aplikasi menyusun *prompt*
+   untuk ditempel ke chatbot AI lain, lalu JSON hasilnya ditempel kembali dan dikonversi
+   menjadi butir soal. **Jumlah soal tanpa batas**: permintaan besar (mis. 100+ butir)
+   dipecah otomatis menjadi beberapa tahap Generate lalu digabung dalam satu review.
 10. **Uji coba**: login sebagai siswa di jendela incognito, kerjakan satu ujian, pastikan
     timer, watermark, autosave, pengumpulan, nilai, dan pembahasan berjalan.
 11. **Kartu Ujian** — cetak kartu peserta (logo sekolah ikut tercetak).
@@ -323,7 +330,6 @@ Login `admin / admin123` → urutan yang disarankan:
 - [ ] Simpan `logs` berkala (tabel `logs` menyimpan jejak login, pelanggaran, ubah pengaturan).
 - [ ] Sudah membuka halaman setup dan menekan **Instal Sekarang** (bukan sekadar membuka
       `index.php` dengan kredensial default).
-- [ ] Bila memakai fitur pembaruan pada repo privat: token GitHub sudah diisi.
 
 **Catatan keamanan penting**
 
@@ -385,19 +391,16 @@ Login sebagai **Admin &rarr; Pengaturan &rarr; kartu Pembaruan Aplikasi**:
   setiap berkas PHP, lalu menyimpan versi baru di tabel `settings`.
 
 Yang **tidak** pernah ditimpa: `config/database.json`, `config/pass.key`,
-`config/installed.json`, `config/update_token.txt`, folder `storage/`. Data siswa, soal,
+`config/installed.json`, folder `storage/`. Data siswa, soal,
 dan hasil ujian ada di MySQL sehingga tetap utuh. Bila ada berkas PHP yang rusak setelah
 diunduh, seluruh perubahan **dibatalkan otomatis** (*rollback*).
 
-**Repositori privat.** Bila repo tidak publik, unduhan anonim akan gagal (`HTTP 404`).
-Isi **Token GitHub** pada kartu yang sama (fine-grained token dengan izin *Contents: Read*)
-&mdash; token disimpan di `config/update_token.txt` (0600) dan tidak pernah dikirim ke
-browser, atau set environment variable `CBT_UPDATE_TOKEN`. Bila repo dijadikan publik,
-token tidak diperlukan lagi.
+Repositori bersifat **publik**, sehingga pembaruan berjalan **tanpa token GitHub** &mdash;
+arsip diambil anonim lewat `codeload.github.com`.
 
-> Catatan kuota: GitHub membatasi **60 permintaan API/jam** untuk permintaan tanpa token.
-> Bila kuota habis, kartu menampilkan pesan *kuota API habis*; pembaruan tetap bisa
-> dijalankan karena arsip diunduh lewat `codeload`, bukan API.
+> Catatan kuota: GitHub membatasi **60 permintaan API/jam** per alamat IP untuk permintaan
+> tanpa token. Bila kuota habis, kartu menampilkan pesan *kuota API habis*; pembaruan tetap
+> bisa dijalankan karena arsip diunduh lewat `codeload`, bukan API.
 
 > Tombol ini butuh ekstensi `curl` dan `phar`, serta izin tulis web server pada folder
 > aplikasi. Untuk server tanpa akses internet keluar, perbarui manual (git pull / unggah
@@ -442,8 +445,7 @@ cbt-gas-php/
 │   └── gemini.php            # Generator soal AI (opsional)
 ├── .htaccess                 # Proteksi folder internal (Apache; lihat catatan AllowOverride)
 ├── config/pass.key           # Kunci enkripsi (dibuat otomatis, tidak di-commit)
-├── config/database.json      # Kredensial hasil setup (dibuat otomatis, tidak di-commit)
-└── config/update_token.txt   # Token GitHub opsional (tidak di-commit)
+└── config/database.json      # Kredensial hasil setup (dibuat otomatis, tidak di-commit)
 ```
 
 ---
@@ -463,6 +465,21 @@ Browser (Index.html)
 `Index.html` memanggil `google.script.run` di 46 tempat (28 fungsi berbeda). Shim
 menyediakan `Proxy` sehingga seluruh pola Apps Script tetap jalan, termasuk
 `.withSuccessHandler()`, `.withFailureHandler()`, dan `.withUserObject()`.
+
+**Navigasi bertahan saat reload**
+
+Halaman terakhir tiap pengguna (view + tab aktif, id ujian pada Bank Soal /
+Rekap Nilai, serta halaman Pembahasan & Detail Jawaban Siswa) disimpan di
+`localStorage` dengan kunci `cbt_nav_<username>` dan dipulihkan otomatis ketika
+halaman di-refresh — pengguna **tidak kembali ke halaman awal**. Status:
+
+- dibersihkan saat logout (`clearAuth()`);
+- dianggap kedaluwarsa setelah 24 jam atau bila peran pengguna berubah;
+- **tidak** disimpan untuk layar ujian yang sedang berlangsung (runtime-nya tidak
+  bisa dipulihkan), sehingga refresh di tengah ujian tetap memakai alur resume
+  draf jawaban yang sudah ada;
+- ditulis saat halaman ditutup/di-refresh (`pagehide`, `beforeunload`) dan saat
+  tab disembunyikan (`visibilitychange`).
 
 **Tabel database**
 
