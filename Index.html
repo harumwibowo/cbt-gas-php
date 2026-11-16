@@ -2997,9 +2997,9 @@
               <span class="hidden xl:inline">Lokal: Tersimpan</span>
             </span>
             <span class="text-slate-300">|</span>
-            <span id="autosave-cloud-indicator" class="flex items-center gap-1 text-slate-500" title="Layer 2: Cloud Sync">
+            <span id="autosave-cloud-indicator" class="flex items-center gap-1 text-slate-500" title="Simpan otomatis ke database setiap jawaban berubah">
               <i data-lucide="cloud" class="w-3.5 h-3.5"></i>
-              <span id="autosave-cloud-text">Sync: Siap</span>
+              <span id="autosave-cloud-text">Simpan: Siap</span>
             </span>
           </div>
 
@@ -3192,7 +3192,9 @@
         violations: 0,
         percobaanKe: 1,
         timerInterval: null,
-        autosaveInterval: null,
+        autosaveInterval: null,   // timer jeda kirim jawaban (debounce)
+        autosaveDirty: false,     // ada perubahan jawaban belum terkirim
+        autosaveInFlight: false,  // permintaan simpan sedang berjalan
         remainingSeconds: 0,
         isExamActive: false,
         watermarkInterval: null
@@ -9107,7 +9109,7 @@ ATURAN YANG WAJIB DIPATUHI:
 3. Pilihan pengecoh (distractor) harus masuk akal, logis, dan mendidik; hanya satu jawaban yang benar.
 4. Field "kunci_jawaban" HARUS berupa HURUF BESAR tunggal tepat dari: ${letters.join(', ')}.
 5. Field yang boleh ada pada tiap objek hanyalah: "teks_soal", ${opsiKeys.map(k => '"' + k + '"').join(', ')}, dan "kunci_jawaban".
-6. Jumlah objek dalam array WAJIB tepat ${jmlSoal}.
+6. Jumlah objek dalam array WAJIB tepat ${jmlSoal} — jangan lebih dan jangan kurang. Jika setelah menulis ternyata jumlahnya melebihi ${jmlSoal}, hapus soal berlebihannya sampai tepat ${jmlSoal} sebelum mengirim jawaban.
 7. Keluaran HANYA berupa JSON array murni yang dimulai dengan [ dan diakhiri dengan ]:
    - DILARANG menambahkan teks apa pun sebelum atau sesudah JSON (tanpa sapaan, tanpa penjelasan, tanpa penutup).
    - DILARANG menambahkan Markdown code fence (\`\`\` atau \`\`\`json), komentar, atau markdown apa pun.
@@ -9123,6 +9125,8 @@ ${contohOpsi}
     "kunci_jawaban": "${contohKunci}"
   }
 ]
+
+PERIKSA SEBELUM MENJAWAB: hitung ulang jumlah objek pada array Anda. Harus tepat ${jmlSoal} butir — melebihi atau kurang dari jumlah itu dianggap salah format.
 
 Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     }
@@ -9276,18 +9280,36 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         return;
       }
 
-      currentAiGeneratedQuestions = result.questions;
+      const requested = parseInt(document.getElementById('ai-param-jumlah-soal').value, 10) || 0;
+
+      // Chatbot Lainnya sering menghasilkan soal lebih banyak dari permintaan
+      // (mis. minta 50, dapat 53). Batasi otomatis ke jumlah yang diminta —
+      // pakai N pertama, sisanya dibuang (jalur Gemini sudah dipotong oleh
+      // generateAiQuestionsChunked).
+      const all = result.questions;
+      const use = (requested > 0 && all.length > requested) ? all.slice(0, requested) : all;
+      const dropped = all.length - use.length;
+
+      currentAiGeneratedQuestions = use;
       currentAiOptionCount = result.optionCount;
       renderAiReviewList(currentAiGeneratedQuestions, currentAiOptionCount);
       document.getElementById('ai-step-form').classList.add('hidden');
       document.getElementById('ai-step-review').classList.remove('hidden');
       lucide.createIcons();
 
-      const requested = parseInt(document.getElementById('ai-param-jumlah-soal').value, 10) || 0;
-      const msg = (requested > 0 && result.questions.length !== requested)
-        ? `${result.questions.length} butir soal dikonversi dari JSON (permintaan awal: ${requested} butir). Silakan review di bawah.`
-        : `${result.questions.length} butir soal berhasil dikonversi dari JSON. Silakan review hasil di bawah.`;
-      showToast(msg, result.questions.length !== requested ? 'info' : 'success');
+      let msg;
+      let toastType;
+      if (dropped > 0) {
+        msg = `JSON berisi ${all.length} butir soal — dipakai ${use.length} pertama sesuai permintaan, ${dropped} soal kelebihan dibuang. Silakan review di bawah.`;
+        toastType = 'warning';
+      } else if (requested > 0 && all.length < requested) {
+        msg = `${all.length} butir soal dikonversi dari JSON (permintaan awal: ${requested} butir). Silakan review di bawah.`;
+        toastType = 'info';
+      } else {
+        msg = `${use.length} butir soal berhasil dikonversi dari JSON. Silakan review hasil di bawah.`;
+        toastType = 'success';
+      }
+      showToast(msg, toastType);
     }
 
     /**
@@ -11809,7 +11831,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       setupDynamicWatermark();
 
       // 5. Setup Dual Layer Autosave Scheduler (PRD 3.1)
-      setupAutosaveScheduler();
+      setupAutosaveEngine();
 
       // 6. Switch View & Render Question 1
       switchView('exam');
@@ -12132,6 +12154,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
 
       rt.doubts[q.id_soal] = !rt.doubts[q.id_soal];
       saveToLocalStorage(); // Layer 1 autosave
+      scheduleAnswerSync();  // Layer 2: simpan perubahan (ragu-ragu) ke database
       renderQuestion();
       renderPalette();
     }
@@ -12145,6 +12168,9 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
 
       // LAYER 1: INSTANT LOCAL STORAGE AUTOSAVE ($0 Server Latency)
       saveToLocalStorage();
+
+      // LAYER 2: kirim ke database SETIAP jawaban berubah (digabung ~1 detik)
+      scheduleAnswerSync();
 
       renderQuestion();
       renderPalette();
@@ -12171,35 +12197,62 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       }
     }
 
-    // LAYER 2: PERIODIC BACKGROUND SYNC WITH JITTER (PRD 3.1)
-    function setupAutosaveScheduler() {
+    // LAYER 2: SIMPAN KE DATABASE SETIAP JAWABAN BERUBAH
+    // (menggantikan sync berkala tiap 60 detik). Setiap perubahan jawaban /
+    // tandai ragu-ragu dijadwalkan lalu dikirim setelah jeda singkat, agar
+    // klik cepat berturut-turut digabung menjadi satu permintaan. Bila ada
+    // perubahan saat permintaan sedang berjalan, permintaan berikutnya menyusul
+    // begitu yang pertama selesai (tidak pernah dua permintaan paralel).
+    const AUTOSAVE_DEBOUNCE_MS = 1000;
+
+    /** Siapkan mesin autosave (dipanggil saat sesi ujian dimulai). */
+    function setupAutosaveEngine() {
       const rt = AppState.runtime;
       if (rt.autosaveInterval) clearTimeout(rt.autosaveInterval);
+      rt.autosaveInterval = null;
+      rt.autosaveDirty = false;
+      rt.autosaveInFlight = false;
+    }
 
-      function scheduleNextAutosave() {
-        if (!rt.isExamActive) return;
+    /** Jadwalkan simpan ke database — dipanggil tiap jawaban/ragu-ragu berubah. */
+    function scheduleAnswerSync() {
+      const rt = AppState.runtime;
+      if (!rt || !rt.isExamActive) return;
 
-        // Interval autosave ke database: 60 detik (60.000 ms)
-        const totalDelay = 60000;
+      rt.autosaveDirty = true;
+      if (rt.autosaveInterval) clearTimeout(rt.autosaveInterval);
+      rt.autosaveInterval = setTimeout(() => {
+        rt.autosaveInterval = null;
+        flushAnswerSync();
+      }, AUTOSAVE_DEBOUNCE_MS);
+    }
 
-        rt.autosaveInterval = setTimeout(() => {
-          performBackgroundSync(() => {
-            scheduleNextAutosave();
-          });
-        }, totalDelay);
-      }
+    /** Kirim perubahan tersimpan; hanya satu permintaan pada satu waktu. */
+    function flushAnswerSync() {
+      const rt = AppState.runtime;
+      if (!rt || !rt.isExamActive) return;
+      if (rt.autosaveInFlight) return; // menyusul setelah permintaan berjalan selesai
+      if (!rt.autosaveDirty) return;
 
-      scheduleNextAutosave();
+      rt.autosaveDirty = false;
+      rt.autosaveInFlight = true;
+      performBackgroundSync(() => {
+        rt.autosaveInFlight = false;
+        if (rt.autosaveDirty && rt.isExamActive) flushAnswerSync();
+      });
     }
 
     function performBackgroundSync(callback) {
       const rt = AppState.runtime;
-      if (!rt.isExamActive) return;
+      if (!rt.isExamActive) {
+        if (callback) callback();
+        return;
+      }
 
       const cloudIndicator = document.getElementById('autosave-cloud-indicator');
       const cloudText = document.getElementById('autosave-cloud-text');
 
-      cloudText.innerText = 'Syncing...';
+      cloudText.innerText = 'Menyimpan...';
       cloudIndicator.className = 'flex items-center gap-1 text-amber-400 animate-pulse';
 
       const payload = {
@@ -12212,16 +12265,16 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       google.script.run
         .withSuccessHandler(res => {
           if (res && res.success) {
-            cloudText.innerText = `Sync: ${res.timestamp}`;
+            cloudText.innerText = `Tersimpan ${res.timestamp}`;
             cloudIndicator.className = 'flex items-center gap-1 text-emerald-400';
           } else {
-            cloudText.innerText = 'Sync Tertunda';
+            cloudText.innerText = 'Tertunda';
             cloudIndicator.className = 'flex items-center gap-1 text-slate-400';
           }
           if (callback) callback();
         })
         .withFailureHandler(err => {
-          cloudText.innerText = 'Sync Offline';
+          cloudText.innerText = 'Offline';
           cloudIndicator.className = 'flex items-center gap-1 text-amber-400';
           if (callback) callback();
         })
@@ -12408,7 +12461,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       const savedRemaining = rt.remainingSeconds;
       rt.isExamActive = false;
       if (rt.timerInterval) clearInterval(rt.timerInterval);
-      if (rt.autosaveInterval) clearTimeout(rt.autosaveInterval);
+      setupAutosaveEngine(); // batalkan simpan yang masih tertunda
       if (rt.watermarkInterval) clearInterval(rt.watermarkInterval);
 
       showToast('Akses ujian diblokir karena batas pelanggaran tercapai...', 'warning');
@@ -12567,7 +12620,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
 
       rt.isExamActive = false;
       if (rt.timerInterval) clearInterval(rt.timerInterval);
-      if (rt.autosaveInterval) clearTimeout(rt.autosaveInterval);
+      setupAutosaveEngine(); // batalkan simpan yang masih tertunda
       if (rt.watermarkInterval) clearInterval(rt.watermarkInterval);
 
       showToast('Mengirimkan jawaban akhir ke server...', 'info');

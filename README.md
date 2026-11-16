@@ -592,7 +592,10 @@ php tools/migrate-passwords.php --dry-run
   Bersihkan gambar yatim dengan `media_purge_orphans()` di `modules/media.php` bila perlu.
 - **Autentikasi**: memakai token per sesi (`TKN-…`) yang dikirim di body request, bukan
   cookie — jadi tidak rentan CSRF berbasis cookie. Perlakukan token seperti kredensial.
-- **Autosave** bersifat *last write wins* (satu siswa tidak mungkin menulis dua kali
+- **Autosave**: jawaban dikirim ke database **setiap kali siswa menjawab atau mengubah
+  jawaban** (termasuk tanda ragu-ragu), dengan jeda gabung ±1 detik agar klik cepat
+  berturut-turut menjadi satu permintaan; timer sinkron berkala 60 detik sudah dihapus.
+  Simpan bersifat *last write wins* (satu siswa tidak mungkin menulis dua kali
   bersamaan pada perangkat yang sama).
 - **AI Gemini** opsional; tanpa API key fitur generator soal otomatis mati, fitur lain
   tetap normal.
