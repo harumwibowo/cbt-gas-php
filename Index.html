@@ -2068,6 +2068,12 @@
             </div>
           </div>
 
+          <!-- Provider "Lainnya": slot ini menampung tombol Generate Prompt
+               sehingga tombol berada di ATAS area copy-paste Prompt & JSON -->
+          <div id="ai-manual-generate-slot" class="hidden flex items-center justify-between gap-3 flex-wrap">
+            <p class="text-[11px] text-slate-500 leading-relaxed min-w-0">Tekan <strong class="text-slate-600">Generate Prompt</strong> untuk menyusun instruksi dari parameter di atas.</p>
+          </div>
+
           <!-- Provider "Lainnya": Prompt & JSON (muncul di bawah parameter terakhir) -->
           <div id="ai-manual-fields" class="hidden space-y-4 p-4 rounded-2xl border border-emerald-200 bg-emerald-50/50">
             <div class="flex items-start justify-between gap-3 flex-wrap">
@@ -2097,7 +2103,7 @@
             </div>
           </div>
 
-          <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-3 flex-wrap">
+          <div id="ai-form-footer" class="pt-3 border-t border-slate-100 flex items-center justify-end gap-3 flex-wrap">
             <button type="button" onclick="closeAiGenerateModal()" class="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition">
               Batal
             </button>
@@ -9021,9 +9027,29 @@
     }
 
     /**
+     * Posisi tombol utama form AI:
+     * - gemini  : tetap di footer form (bersama tombol Batal).
+     * - lainnya : dipindah ke ATAS area copy-paste Prompt & JSON.
+     * @param {boolean} toManualSlot true untuk provider "Lainnya"
+     */
+    function placeAiGenerateButton(toManualSlot) {
+      const btn = document.getElementById('btn-start-ai-generate');
+      const slot = document.getElementById('ai-manual-generate-slot');
+      const footer = document.getElementById('ai-form-footer');
+      if (!btn || !slot || !footer) return;
+
+      // Slot (baris petunjuk + tombol) hanya tampil untuk provider "Lainnya"
+      slot.classList.toggle('hidden', !toManualSlot);
+
+      const target = toManualSlot ? slot : footer;
+      if (btn.parentNode !== target) target.appendChild(btn);
+    }
+
+    /**
      * Ganti tampilan form sesuai provider:
      * - gemini  : form sama seperti sebelumnya (field model terlihat).
-     * - lainnya : muncul field Prompt & JSON, tombol berubah jadi "Generate Prompt".
+     * - lainnya : muncul field Prompt & JSON, tombol berubah jadi "Generate Prompt"
+     *             dan dipindah ke atas area Prompt & JSON.
      */
     function onAiProviderChange(val) {
       const isManual = val === 'lainnya';
@@ -9036,6 +9062,7 @@
       if (manualFields) manualFields.classList.toggle('hidden', !isManual);
       if (modelField) modelField.classList.toggle('hidden', isManual);
       if (convertBtn) convertBtn.classList.toggle('hidden', !isManual);
+      placeAiGenerateButton(isManual);
       if (hint) {
         hint.innerText = isManual
           ? 'Aplikasi menyusun prompt untuk Anda tempel ke chatbot AI lain; JSON hasilnya ditempel kembali ke aplikasi.'
