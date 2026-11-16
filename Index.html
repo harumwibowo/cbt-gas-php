@@ -2631,9 +2631,9 @@
               </select>
             </div>
             <div>
-              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Token Ujian</label>
+              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Token Ujian <span class="text-slate-400 font-medium normal-case">(opsional)</span></label>
               <div class="flex items-center gap-1.5">
-                <input type="text" id="exam-token" required maxlength="8" placeholder="Contoh: CBT26" class="w-full uppercase font-mono font-black tracking-widest px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-purple-500 bg-purple-50/30 text-purple-900">
+                <input type="text" id="exam-token" maxlength="8" placeholder="Kosongkan bila tanpa token" class="w-full uppercase font-mono font-black tracking-widest px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-purple-500 bg-purple-50/30 text-purple-900">
                 <button type="button" onclick="generateNewExamToken()" class="px-2.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition text-xs flex items-center shrink-0 border border-slate-200" title="Acak / Buat Token Baru">
                   <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                 </button>
@@ -2641,6 +2641,10 @@
                   <i data-lucide="copy" class="w-4 h-4"></i>
                 </button>
               </div>
+              <p class="text-[11px] text-slate-400 mt-1.5 flex items-start gap-1.5">
+                <i data-lucide="key-round" class="w-3.5 h-3.5 text-purple-500 shrink-0 mt-0.5"></i>
+                <span>Biarkan <strong class="text-slate-600">kosong</strong> agar siswa langsung masuk ke halaman ujian tanpa memasukkan token. Klik tombol <strong class="text-slate-600">acak</strong> atau isi manual bila ujian ingin diproteksi token.</span>
+              </p>
             </div>
           </div>
 
@@ -6110,7 +6114,7 @@
                <i data-lucide="key" class="w-3 h-3 text-amber-600"></i> ${safeToken}
                <i data-lucide="copy" class="w-2.5 h-2.5 text-amber-500 opacity-70"></i>
              </button>`
-          : `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500">Tanpa Token</span>`;
+          : `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 flex items-center gap-1" title="Siswa langsung masuk ke halaman ujian tanpa memasukkan token"><i data-lucide="door-open" class="w-3 h-3"></i> Tanpa Token</span>`;
 
         const isKhusus = (ex.tipe_peserta || '').toLowerCase() === 'khusus';
         let targetPesertaBadge = '';
@@ -6249,7 +6253,7 @@
                <i data-lucide="key" class="w-3 h-3 text-amber-600"></i> ${safeToken}
                <i data-lucide="copy" class="w-2.5 h-2.5 text-amber-500 opacity-70"></i>
              </button>`
-          : `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500">Tanpa Token</span>`;
+          : `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 flex items-center gap-1" title="Siswa langsung masuk ke halaman ujian tanpa memasukkan token"><i data-lucide="door-open" class="w-3 h-3"></i> Tanpa Token</span>`;
 
         const isKhusus = (ex.tipe_peserta || '').toLowerCase() === 'khusus';
         let targetPesertaBadge = '';
@@ -7395,7 +7399,8 @@
         populateExamClassCheckboxes('Semua Kelas');
         populateExamSessionCheckboxes('Semua Sesi');
         populateExamSpecialStudents('');
-        generateNewExamToken();
+        // Token bersifat opsional: field dibiarkan kosong secara default.
+        if (document.getElementById('exam-token')) document.getElementById('exam-token').value = '';
       }
       lucide.createIcons();
     }
@@ -7424,7 +7429,7 @@
         document.getElementById('exam-tampilkan-pembahasan').value = (exam.tampilkan_pembahasan === 'Ya') ? 'Ya' : 'Tidak';
       }
       updateExamBankInfoBadge(Number(exam.jumlah_soal) || 0);
-      document.getElementById('exam-token').value = exam.token_ujian || generateRandomExamToken(6);
+      document.getElementById('exam-token').value = exam.token_ujian || '';
       document.getElementById('exam-mulai').value = formatDateTimeLocalInput(exam.waktu_mulai);
       document.getElementById('exam-selesai').value = formatDateTimeLocalInput(exam.waktu_selesai);
       if (document.getElementById('exam-tingkat')) document.getElementById('exam-tingkat').value = exam.tingkat || '';
@@ -11773,11 +11778,8 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       if (hasToken) {
         openStudentTokenModal(examId, examTitle, durationMinutes);
       } else {
-        let savedToken = '';
-        try {
-          savedToken = localStorage.getItem(`cbt_token_${examId}_${AppState.user.username}`) || '';
-        } catch (e) {}
-        executeStartStudentExam(examId, savedToken);
+        // Ujian tanpa token: siswa langsung masuk ke halaman ujian.
+        executeStartStudentExam(examId, '');
       }
     }
 

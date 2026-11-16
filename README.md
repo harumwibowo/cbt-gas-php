@@ -1,6 +1,6 @@
 # CBT GAS — PHP 8 + MySQL
 
-**Versi rilis:** `1.0.3` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
+**Versi rilis:** `1.0.4` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
 proyek (satu baris, mis. `1.0.3`). Berkas ini ikut tersalin saat pembaruan dari GitHub,
 sehingga label versi di **kartu Pembaruan Aplikasi** dan di **halaman login** otomatis
 berganti. Naikkan isinya setiap kali merilis versi baru.
@@ -294,7 +294,8 @@ Login `admin / admin123` → urutan yang disarankan:
 7. **Pengguna** — tambah guru & siswa satu per satu, atau **Impor** massal
    (tempel data `username, nama, password, role, kelas, sesi, nisn`).
 8. **Buat Ujian** (menu Guru/Admin) — nama, durasi, jadwal mulai/selesai, kelas & sesi
-   sasaran, token, jumlah soal tampil, jumlah percobaan, acak soal/opsi, tampilkan pembahasan.
+   sasaran, token (opsional — biarkan kosong agar siswa langsung masuk ke halaman ujian), jumlah soal
+   tampil, jumlah percobaan, acak soal/opsi, tampilkan pembahasan.
 9. **Bank Soal** — tambah butir soal (teks stimulan, **gambar diunggah langsung ke database**,
    opsi A–J, kunci jawaban, bobot), atau **Impor** dari Excel, atau **Generate** dengan AI:
    pilih provider **Gemini** (otomatis) maupun **Lainnya** — aplikasi menyusun *prompt*
