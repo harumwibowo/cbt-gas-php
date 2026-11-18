@@ -5,6 +5,16 @@
  */
 declare(strict_types=1);
 
+/** Jumlah akun Admin yang masih aktif. */
+function count_active_admins(): int
+{
+    return (int) db_val(
+        "SELECT COUNT(*) FROM users WHERE LOWER(TRIM(role)) = 'admin' AND LOWER(TRIM(status_aktif)) <> 'nonaktif'",
+        [],
+        0
+    );
+}
+
 /** Daftar pengguna ringkas (padanan getUsers()). */
 function getUsers($username, $token): array
 {
@@ -32,7 +42,7 @@ function getUsers($username, $token): array
 
         return ['success' => true, 'users' => $users];
     } catch (Throwable $e) {
-        return err('Gagal memuat pengguna: ' . $e->getMessage());
+        return err('Gagal memuat pengguna: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -69,8 +79,9 @@ function getStudentExamCards($username, $token): array
             $seen[$key] = true;
 
             $students[] = [
-                'username'     => $uname,
-                'password'     => password_for_display($row),
+                'username'           => $uname,
+                'password'           => '',
+                'password_available' => false,
                 'nama_lengkap' => tostr($row['nama_lengkap']) !== '' ? tostr($row['nama_lengkap']) : $uname,
                 'kelas'        => tostr($row['kelas']) !== '' ? tostr($row['kelas']) : '-',
                 'sesi'         => tostr($row['sesi']) !== '' ? tostr($row['sesi']) : '-',
@@ -84,7 +95,7 @@ function getStudentExamCards($username, $token): array
 
         return ['success' => true, 'students' => $students];
     } catch (Throwable $e) {
-        return err('Gagal memuat data kartu ujian: ' . $e->getMessage());
+        return err('Gagal memuat data kartu ujian: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -187,7 +198,7 @@ function getAdminData($username, $token): array
             'available_teachers' => $lists['available_teachers'],
         ];
     } catch (Throwable $e) {
-        return err('Gagal memuat data admin: ' . $e->getMessage());
+        return err('Gagal memuat data admin: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -201,9 +212,12 @@ function saveUser($username, $token, $userData): array
     $userData = is_array($userData) ? $userData : [];
 
     try {
-        $targetUsername = strtolower(trim(tostr($userData['username'] ?? '')));
+        $targetUsername = normalize_username($userData['username'] ?? '');
         if ($targetUsername === '') {
             return err('Username tidak boleh kosong.');
+        }
+        if (!is_valid_username($targetUsername)) {
+            return err('Username hanya boleh berisi huruf, angka, titik, garis bawah, atau strip (3-50 karakter).');
         }
 
         $isEdit = tostr($userData['id_user'] ?? '') !== '';
@@ -219,29 +233,49 @@ function saveUser($username, $token, $userData): array
             }
         }
 
-        $role = tostr($userData['role'] ?? '') !== '' ? tostr($userData['role']) : 'Siswa';
-        $sesiVal = trim(tostr($userData['sesi'] ?? '')) !== '' ? trim(tostr($userData['sesi'])) : '-';
-        $tktVal = strtolower($role) === 'siswa'
-            ? (trim(tostr($userData['tingkat'] ?? '')) !== '' ? trim(tostr($userData['tingkat'])) : '-')
+        $roleInput = strtolower(trim(tostr($userData['role'] ?? 'siswa')));
+        $roleMap = ['admin' => 'Admin', 'guru' => 'Guru', 'siswa' => 'Siswa'];
+        $role = $roleMap[$roleInput] ?? 'Siswa';
+        $sesiVal = sanitize_plain_text($userData['sesi'] ?? '') !== '' ? limit_text(sanitize_plain_text($userData['sesi']), 50) : '-';
+        $tktVal = $role === 'Siswa'
+            ? (sanitize_plain_text($userData['tingkat'] ?? '') !== '' ? limit_text(sanitize_plain_text($userData['tingkat']), 50) : '-')
             : '-';
-        $nama = tostr($userData['nama_lengkap'] ?? '');
-        $kelas = tostr($userData['kelas'] ?? '') !== '' ? tostr($userData['kelas']) : '-';
-        $status = tostr($userData['status_aktif'] ?? '') !== '' ? tostr($userData['status_aktif']) : 'Aktif';
+        $nama = limit_text(sanitize_plain_text($userData['nama_lengkap'] ?? ''), 100);
+        if ($nama === '') {
+            return err('Nama lengkap wajib diisi.');
+        }
+        $kelas = sanitize_plain_text($userData['kelas'] ?? '') !== '' ? limit_text(sanitize_plain_text($userData['kelas']), 50) : '-';
+        $statusInput = strtolower(trim(tostr($userData['status_aktif'] ?? 'aktif')));
+        $status = $statusInput === 'nonaktif' ? 'Nonaktif' : 'Aktif';
+
+        db()->beginTransaction();
 
         if ($isEdit) {
             if ($existing === null) {
+                db()->rollBack();
                 return err('Data pengguna tidak ditemukan untuk diedit.');
             }
             $roleChanged = strtolower($role) !== strtolower(tostr($existing['role']));
+            $wasActiveAdmin = strtolower(trim(tostr($existing['role']))) === 'admin'
+                && strtolower(trim(tostr($existing['status_aktif']))) !== 'nonaktif';
+            $willBeActiveAdmin = strtolower($role) === 'admin' && strtolower($status) !== 'nonaktif';
+            if ($wasActiveAdmin && !$willBeActiveAdmin && count_active_admins() <= 1) {
+                db()->rollBack();
+                return err('Tidak dapat menonaktifkan atau mengubah peran Admin aktif terakhir.');
+            }
+
             $passwordBaru = trim(tostr($userData['password'] ?? ''));
 
             if ($passwordBaru !== '') {
                 [$newHash, $newEnc] = password_fields($passwordBaru);
                 db_exec(
-                    'UPDATE users SET username = ?, password = ?, password_enc = ?, nama_lengkap = ?, role = ?, kelas = ?,
+                    'UPDATE users SET username = ?, password = ?, password_enc = NULL, nama_lengkap = ?, role = ?, kelas = ?,
                         status_aktif = ?, sesi = ?, tingkat = ? WHERE id_user = ?',
-                    [$targetUsername, $newHash, $newEnc, $nama, $role, $kelas, $status, $sesiVal, $tktVal, tostr($existing['id_user'])]
+                    [$targetUsername, $newHash, $nama, $role, $kelas, $status, $sesiVal, $tktVal, tostr($existing['id_user'])]
                 );
+                // Password berubah: semua sesi lama tidak berlaku lagi.
+                session_revoke_all($targetUsername);
+                db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [tostr($existing['id_user'])]);
             } else {
                 // Password tidak diubah: nilai lama dipertahankan.
                 db_exec(
@@ -252,9 +286,39 @@ function saveUser($username, $token, $userData): array
             }
             // Akun nonaktif / perubahan peran mengakhiri sesi aktif
             if (strtolower($status) === 'nonaktif' || $roleChanged) {
+                session_revoke_all($targetUsername);
                 db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [tostr($existing['id_user'])]);
             }
 
+            // Ganti username: ikutkan referensi agar riwayat tidak yatim.
+            $oldUsername = strtolower(trim(tostr($existing['username'])));
+            if ($oldUsername !== $targetUsername) {
+                db_exec(
+                    'UPDATE results SET username_siswa = ? WHERE LOWER(TRIM(username_siswa)) = ?',
+                    [$targetUsername, $oldUsername]
+                );
+                db_exec(
+                    'UPDATE exams SET id_guru = ? WHERE LOWER(TRIM(id_guru)) = ?',
+                    [$targetUsername, $oldUsername]
+                );
+                db_exec('UPDATE sessions SET username = ? WHERE username = ?', [$targetUsername, $oldUsername]);
+                // Kolaborator disimpan sebagai daftar dipisah koma.
+                foreach (db_all("SELECT id_ujian, kolaborator FROM exams WHERE kolaborator <> ''") as $exRow) {
+                    $members = split_list(tostr($exRow['kolaborator']));
+                    $changed = false;
+                    foreach ($members as $mi => $member) {
+                        if (strtolower(trim($member)) === $oldUsername) {
+                            $members[$mi] = $targetUsername;
+                            $changed = true;
+                        }
+                    }
+                    if ($changed) {
+                        db_exec('UPDATE exams SET kolaborator = ? WHERE id_ujian = ?', [implode(', ', $members), tostr($exRow['id_ujian'])]);
+                    }
+                }
+            }
+
+            db()->commit();
             log_activity(tostr($username), 'Update User', 'Mengupdate user: ' . $targetUsername . ' (Tingkat: ' . $tktVal . ', Sesi: ' . $sesiVal . ')');
             return ['success' => true, 'message' => 'Pengguna berhasil diperbarui.'];
         }
@@ -264,13 +328,17 @@ function saveUser($username, $token, $userData): array
         db_exec(
             'INSERT INTO users (id_user, username, password, password_enc, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
              VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-            [new_id('USR'), $targetUsername, $passHash, $passEnc, $nama, $role, $kelas, null, $status, $sesiVal, $tktVal]
+            [new_id('USR'), $targetUsername, $passHash, null, $nama, $role, $kelas, null, $status, $sesiVal, $tktVal]
         );
+        db()->commit();
 
         log_activity(tostr($username), 'Create User', 'Menambahkan user baru: ' . $targetUsername . ' (' . $role . ', Tingkat: ' . $tktVal . ', Sesi: ' . $sesiVal . ')');
         return ['success' => true, 'message' => 'Pengguna baru berhasil ditambahkan.'];
     } catch (Throwable $e) {
-        return err('Gagal menyimpan pengguna: ' . $e->getMessage());
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        return err('Gagal menyimpan pengguna: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -311,13 +379,18 @@ function changePassword($username, $token, $currentPassword, $newPassword, $conf
         }
 
         [$newHash, $newEnc] = password_fields($newPassword);
-        db_exec('UPDATE users SET password = ?, password_enc = ? WHERE id_user = ?',
-            [$newHash, $newEnc, tostr($row['id_user'])]);
+        db_exec('UPDATE users SET password = ?, password_enc = NULL WHERE id_user = ?',
+            [$newHash, tostr($row['id_user'])]);
+        // Perangkat lain harus login ulang dengan password baru.
+        db_exec(
+            'UPDATE sessions SET revoked_at = ? WHERE username = ? AND token_hash <> ? AND revoked_at IS NULL',
+            [now_dt(), strtolower(trim(tostr($username))), session_token_hash(tostr($token))]
+        );
         log_activity(tostr($username), 'Change Password', 'Pengguna berhasil memperbarui password akun.');
 
         return ['success' => true, 'message' => 'Password berhasil diperbarui!'];
     } catch (Throwable $e) {
-        return err('Gagal memperbarui password: ' . $e->getMessage());
+        return err('Gagal memperbarui password: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -337,13 +410,36 @@ function deleteUser($username, $token, $id_user): array
         if (strtolower($deletedUsername) === 'admin') {
             return err('Akun Super Admin utama tidak boleh dihapus.');
         }
+        if (strtolower(trim(tostr($row['role']))) === 'admin'
+            && strtolower(trim(tostr($row['status_aktif']))) !== 'nonaktif'
+            && count_active_admins() <= 1) {
+            return err('Tidak dapat menghapus Admin aktif terakhir.');
+        }
 
+        // Anonimkan riwayat, jangan hapus bukti ujian. Username anonim harus
+        // unik agar tidak melanggar unique result per percobaan.
+        $anonName = 'deleted:' . limit_text(tostr($id_user), 80);
+        db()->beginTransaction();
+        session_revoke_all($deletedUsername);
+        db_exec(
+            'UPDATE results SET username_siswa = ? WHERE LOWER(TRIM(username_siswa)) = ?',
+            [$anonName, strtolower(trim($deletedUsername))]
+        );
+        db_exec(
+            'UPDATE logs SET username = ? WHERE LOWER(TRIM(username)) = ?',
+            [$anonName, strtolower(trim($deletedUsername))]
+        );
         db_exec('DELETE FROM users WHERE id_user = ?', [tostr($id_user)]);
+        db()->commit();
+
         log_activity(tostr($username), 'Delete User', 'Menghapus user: ' . $deletedUsername);
 
         return ['success' => true, 'message' => 'Pengguna berhasil dihapus.'];
     } catch (Throwable $e) {
-        return err($e->getMessage());
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        return err(client_error_message($e->getMessage()));
     }
 }
 
@@ -362,13 +458,27 @@ function getStudentLoginSessions($username, $token): array
 
         $maxSessions = get_max_student_sessions();
 
-        // Login terakhir per siswa (pindai log terbaru ke bawah)
+        // Login terakhir per siswa: satu query agregat, bukan memindai seluruh
+        // tabel log di PHP.
         $lastLogins = [];
-        foreach (db_all("SELECT username, timestamp FROM logs WHERE LOWER(TRIM(jenis_kejadian)) = 'login' ORDER BY id DESC") as $logRow) {
-            $logUser = strtolower(trim(tostr($logRow['username'])));
-            if ($logUser !== '' && !isset($lastLogins[$logUser])) {
-                $lastLogins[$logUser] = dt_display($logRow['timestamp']);
+        foreach (db_all(
+            "SELECT LOWER(TRIM(username)) AS lname, MAX(`timestamp`) AS last_ts
+             FROM logs WHERE jenis_kejadian = 'Login' GROUP BY LOWER(TRIM(username))"
+        ) as $logRow) {
+            $logUser = strtolower(trim(tostr($logRow['lname'])));
+            if ($logUser !== '') {
+                $lastLogins[$logUser] = dt_display($logRow['last_ts']);
             }
+        }
+
+        // Jumlah sesi aktif per siswa juga diambil sekaligus.
+        $activeSessionMap = [];
+        foreach (db_all(
+            'SELECT username, COUNT(*) AS total FROM sessions
+             WHERE revoked_at IS NULL AND expires_at > ? GROUP BY username',
+            [now_dt()]
+        ) as $sesRow) {
+            $activeSessionMap[strtolower(trim(tostr($sesRow['username'])))] = (int) $sesRow['total'];
         }
 
         $students = [];
@@ -383,12 +493,12 @@ function getStudentLoginSessions($username, $token): array
             if ($uname === '') {
                 continue;
             }
-            $activeTokens = parse_session_tokens($row['token_session']);
+            $activeCount = (int) ($activeSessionMap[strtolower($uname)] ?? 0);
             $kelas = tostr($row['kelas']) !== '' ? tostr($row['kelas']) : '-';
             if ($kelas !== '' && $kelas !== '-') {
                 $classMap[$kelas] = true;
             }
-            if (count($activeTokens) > 0) {
+            if ($activeCount > 0) {
                 $totalOnline++;
             }
 
@@ -400,9 +510,9 @@ function getStudentLoginSessions($username, $token): array
                 'sesi'            => tostr($row['sesi']) !== '' ? tostr($row['sesi']) : '-',
                 'tingkat'         => tostr($row['tingkat']) !== '' ? tostr($row['tingkat']) : '-',
                 'status_aktif'    => tostr($row['status_aktif']) !== '' ? tostr($row['status_aktif']) : 'Aktif',
-                'active_sessions' => count($activeTokens),
+                'active_sessions' => $activeCount,
                 'max_sessions'    => $maxSessions,
-                'is_online'       => count($activeTokens) > 0,
+                'is_online'       => $activeCount > 0,
                 'last_login'      => $lastLogins[strtolower($uname)] ?? '',
             ];
         }
@@ -424,7 +534,7 @@ function getStudentLoginSessions($username, $token): array
             'total_students' => count($students),
         ];
     } catch (Throwable $e) {
-        return err('Gagal memuat sesi login siswa: ' . $e->getMessage());
+        return err('Gagal memuat sesi login siswa: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -455,13 +565,14 @@ function resetStudentLoginSession($username, $token, $targetUsername): array
         }
 
         $targetName = tostr($row['nama_lengkap']) !== '' ? tostr($row['nama_lengkap']) : $target;
-        $activeCount = count(parse_session_tokens($row['token_session']));
+        $activeCount = session_count_active($target);
 
         if ($activeCount === 0) {
             log_activity(tostr($username), 'Reset Login Siswa', 'Tidak ada sesi login aktif pada siswa: ' . $target);
             return ['success' => true, 'message' => 'Tidak ada sesi login aktif pada akun ' . $targetName . '.'];
         }
 
+        session_revoke_all($target);
         db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [tostr($row['id_user'])]);
         log_activity(tostr($username), 'Reset Login Siswa', 'Mengeluarkan ' . $activeCount . ' sesi login siswa: ' . $target . ' (' . $targetName . ')');
 
@@ -470,7 +581,7 @@ function resetStudentLoginSession($username, $token, $targetUsername): array
             'message' => 'Sesi login ' . $targetName . ' berhasil direset. ' . $activeCount . ' perangkat telah dikeluarkan.',
         ];
     } catch (Throwable $e) {
-        return err('Gagal mereset sesi login: ' . $e->getMessage());
+        return err('Gagal mereset sesi login: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -497,6 +608,8 @@ function importUsers($username, $token, $usersList): array
         $updatedCount = 0;
         $skippedCount = 0;
 
+        db()->beginTransaction();
+
         foreach ($usersList as $item) {
             if (!is_array($item)) {
                 $skippedCount++;
@@ -508,52 +621,74 @@ function importUsers($username, $token, $usersList): array
                 continue;
             }
 
-            $targetUsername = strtolower($rawUsername);
-            $namaLengkap = trim(tostr($item['nama_lengkap'] ?? ($item['nama'] ?? '')));
+            $targetUsername = normalize_username($rawUsername);
+            if (!is_valid_username($targetUsername)) {
+                $skippedCount++;
+                continue;
+            }
+            $namaLengkap = limit_text(sanitize_plain_text($item['nama_lengkap'] ?? ($item['nama'] ?? '')), 100);
             if ($namaLengkap === '') {
                 $namaLengkap = $rawUsername;
             }
 
             $rawRole = trim(tostr($item['role'] ?? ($item['peran'] ?? '')));
-            $role = 'Siswa';
-            if (strtolower($rawRole) === 'guru') {
-                $role = 'Guru';
-            } elseif (strtolower($rawRole) === 'admin') {
-                $role = 'Admin';
-            }
+            $roleMap = ['admin' => 'Admin', 'guru' => 'Guru', 'siswa' => 'Siswa'];
+            $role = $roleMap[strtolower($rawRole)] ?? 'Siswa';
 
-            $tingkat = trim(tostr($item['tingkat'] ?? ($item['tingkat_kelas'] ?? ($item['level'] ?? ($item['grade'] ?? '')))));
+            $tingkat = limit_text(sanitize_plain_text($item['tingkat'] ?? ($item['tingkat_kelas'] ?? ($item['level'] ?? ($item['grade'] ?? '')))), 50);
             $tingkat = $tingkat !== '' ? $tingkat : '-';
-            $kelas = trim(tostr($item['kelas'] ?? ($item['rombel'] ?? '')));
+            $kelas = limit_text(sanitize_plain_text($item['kelas'] ?? ($item['rombel'] ?? '')), 50);
             $kelas = $kelas !== '' ? $kelas : '-';
-            $sesi = trim(tostr($item['sesi'] ?? ($item['session'] ?? ($item['sesi_ujian'] ?? ''))));
+            $sesi = limit_text(sanitize_plain_text($item['sesi'] ?? ($item['session'] ?? ($item['sesi_ujian'] ?? ''))), 50);
             $sesi = $sesi !== '' ? $sesi : '-';
             $password = trim(tostr($item['password'] ?? ''));
-            $password = $password !== '' ? $password : '123456';
-            $status = trim(tostr($item['status_aktif'] ?? ($item['status'] ?? '')));
-            $status = $status !== '' ? $status : 'Aktif';
+            $statusInput = strtolower(trim(tostr($item['status_aktif'] ?? ($item['status'] ?? 'aktif'))));
+            $status = $statusInput === 'nonaktif' ? 'Nonaktif' : 'Aktif';
             $finalTingkat = $role === 'Siswa' ? $tingkat : '-';
 
             if (isset($existingUsers[$targetUsername])) {
                 $existingId = $existingUsers[$targetUsername];
-                [$impHash, $impEnc] = password_fields($password);
-                db_exec(
-                    'UPDATE users SET username = ?, password = ?, password_enc = ?, nama_lengkap = ?, role = ?, kelas = ?,
-                        status_aktif = ?, sesi = ?, tingkat = ? WHERE id_user = ?',
-                    [$rawUsername, $impHash, $impEnc, $namaLengkap, $role, $kelas, $status, $sesi, $finalTingkat, $existingId]
-                );
+                $prevRow = db_one('SELECT role, status_aktif FROM users WHERE id_user = ?', [$existingId]);
+                $prevWasActiveAdmin = $prevRow
+                    && strtolower(trim(tostr($prevRow['role']))) === 'admin'
+                    && strtolower(trim(tostr($prevRow['status_aktif']))) !== 'nonaktif';
+                $nextIsActiveAdmin = $role === 'Admin' && $status !== 'Nonaktif';
+                if ($prevWasActiveAdmin && !$nextIsActiveAdmin && count_active_admins() <= 1) {
+                    $skippedCount++;
+                    continue;
+                }
+                if ($password !== '') {
+                    [$impHash, $impEnc] = password_fields($password);
+                    db_exec(
+                        'UPDATE users SET username = ?, password = ?, password_enc = NULL, nama_lengkap = ?, role = ?, kelas = ?,
+                            status_aktif = ?, sesi = ?, tingkat = ? WHERE id_user = ?',
+                        [$targetUsername, $impHash, $namaLengkap, $role, $kelas, $status, $sesi, $finalTingkat, $existingId]
+                    );
+                } else {
+                    db_exec(
+                        'UPDATE users SET username = ?, nama_lengkap = ?, role = ?, kelas = ?,
+                            status_aktif = ?, sesi = ?, tingkat = ? WHERE id_user = ?',
+                        [$targetUsername, $namaLengkap, $role, $kelas, $status, $sesi, $finalTingkat, $existingId]
+                    );
+                }
+                // Impor dapat mengubah password/role/status: paksa login ulang.
+                session_revoke_all($targetUsername);
+                db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [$existingId]);
                 $updatedCount++;
             } else {
+                $password = $password !== '' ? $password : '123456';
                 [$impHash2, $impEnc2] = password_fields($password);
                 db_exec(
                     'INSERT INTO users (id_user, username, password, password_enc, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
                      VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                    [new_id('USR'), $rawUsername, $impHash2, $impEnc2, $namaLengkap, $role, $kelas, null, $status, $sesi, $finalTingkat]
+                    [new_id('USR'), $targetUsername, $impHash2, null, $namaLengkap, $role, $kelas, null, $status, $sesi, $finalTingkat]
                 );
                 $existingUsers[$targetUsername] = true;
                 $addedCount++;
             }
         }
+
+        db()->commit();
 
         log_activity(tostr($username), 'Import Users', 'Mengimpor pengguna: ' . $addedCount . ' baru, ' . $updatedCount . ' diperbarui.');
 
@@ -568,6 +703,9 @@ function importUsers($username, $token, $usersList): array
             'skipped' => $skippedCount,
         ];
     } catch (Throwable $e) {
-        return err('Gagal mengimpor data pengguna: ' . $e->getMessage());
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        return err('Gagal mengimpor data pengguna: ' . client_error_message($e->getMessage()));
     }
 }

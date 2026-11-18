@@ -34,11 +34,21 @@ function write_setup_config(array $config): bool
     if (is_file($path) && !is_writable($path)) {
         return false;
     }
-    $ok = @file_put_contents($path, $payload) !== false;
-    if ($ok) {
-        @chmod($path, 0600);
+    // Tulis ke berkas sementara lalu rename atomik: config lama tidak pernah
+    // tertinggal setengah tertulis bila proses berhenti.
+    $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+    $written = @file_put_contents($tmp, $payload);
+    if ($written === false) {
+        @unlink($tmp);
+        return false;
     }
-    return $ok;
+    @chmod($tmp, 0600);
+    if (!@rename($tmp, $path)) {
+        @unlink($tmp);
+        return false;
+    }
+    @chmod($path, 0600);
+    return true;
 }
 
 /** Data kredensial dari input pengguna (dengan validasi & default). */
@@ -242,6 +252,31 @@ function setup_needs_wizard(): bool
         $cache = true;
         return true;
     }
+}
+
+/**
+ * Apakah aksi setup (test/install/force) boleh dijalankan.
+ *
+ * Instalasi pertama selalu boleh. Setelah aplikasi terpasang, hanya request
+ * dari localhost atau saat CBT_ALLOW_REINSTALL=1 yang boleh menjalankan ulang
+ * setup, sehingga endpoint install tidak dapat dipicu dari internet.
+ */
+function setup_actions_allowed(): bool
+{
+    if (getenv('CBT_ALLOW_REINSTALL') === '1') {
+        return true;
+    }
+
+    // Instalasi pertama (belum ada config dan bukan dari environment) selalu
+    // boleh, termasuk dari host lain.
+    if (!is_file(setup_config_path()) && !CBT_DB_FROM_ENV) {
+        return true;
+    }
+
+    // Setelah config ada, aksi setup/install hanya untuk localhost. Kondisi
+    // database tidak dipakai sebagai alasan membuka akses dari internet.
+    $ip = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    return in_array($ip, ['127.0.0.1', '::1'], true);
 }
 
 /** Kredensial yang akan ditampilkan di form (tanpa membocorkan password). */

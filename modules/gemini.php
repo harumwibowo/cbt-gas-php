@@ -45,8 +45,15 @@ function gemini_error_message(string $body, int $code): string
 }
 
 /** Daftar model Gemini yang mendukung generateContent. */
-function getGeminiModels($apiKey = ''): array
+function getGeminiModels($username, $token, $apiKey = ''): array
 {
+    if (!validate_session($username, $token)) {
+        return err('Sesi tidak valid. Silakan login kembali.');
+    }
+    if (!in_array(strtolower(trim(current_role(tostr($username)))), ['admin', 'guru'], true)) {
+        return err('Akses ditolak.');
+    }
+
     try {
         $key = trim(tostr($apiKey));
         if ($key === '') {
@@ -99,13 +106,20 @@ function getGeminiModels($apiKey = ''): array
 
         return ['success' => true, 'models' => $validModels];
     } catch (Throwable $e) {
-        return err('Kesalahan saat memuat model: ' . $e->getMessage());
+        return err('Kesalahan saat memuat model: ' . client_error_message($e->getMessage()));
     }
 }
 
 /** Uji koneksi Gemini dengan permintaan minimal. */
-function testGeminiConnection($apiKey = '', $modelId = ''): array
+function testGeminiConnection($username, $token, $apiKey = '', $modelId = ''): array
 {
+    if (!validate_session($username, $token)) {
+        return err('Sesi tidak valid. Silakan login kembali.');
+    }
+    if (!in_array(strtolower(trim(current_role(tostr($username)))), ['admin', 'guru'], true)) {
+        return err('Akses ditolak.');
+    }
+
     try {
         $key = trim(tostr($apiKey));
         if ($key === '') {
@@ -153,7 +167,7 @@ function testGeminiConnection($apiKey = '', $modelId = ''): array
             'message' => 'Koneksi gagal (HTTP ' . $response['code'] . '): ' . gemini_error_message($response['body'], $response['code']),
         ];
     } catch (Throwable $e) {
-        return err('Terjadi kesalahan sistem saat uji koneksi: ' . $e->getMessage());
+        return err('Terjadi kesalahan sistem saat uji koneksi: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -168,6 +182,9 @@ function generateQuestionsWithGemini($username, $token, $params = []): array
 {
     if (!validate_session($username, $token)) {
         return err('Sesi tidak valid. Silakan login kembali.');
+    }
+    if (!in_array(strtolower(trim(current_role(tostr($username)))), ['admin', 'guru'], true)) {
+        return err('Akses ditolak.');
     }
 
     try {

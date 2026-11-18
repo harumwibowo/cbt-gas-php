@@ -50,24 +50,24 @@ function getExamQuestions($username, $token, $id_ujian): array
             $item = [
                 'id_soal'       => tostr($row['id_soal']),
                 'id_ujian'      => tostr($row['id_ujian']),
-                'teks_soal'     => tostr($row['teks_soal']),
-                'url_gambar'    => tostr($row['url_gambar']),
+                'teks_soal'     => sanitize_html_fragment($row['teks_soal']),
+                'url_gambar'    => safe_media_url($row['url_gambar']),
                 'kunci_jawaban' => strtoupper(tostr($row['kunci_jawaban'])),
                 'bobot'         => (int) $row['bobot'] > 0 ? (int) $row['bobot'] : 1,
                 'id_teks'       => $qIdTeks,
-                'pembahasan'    => tostr($row['pembahasan']),
-                'nama_teks'     => $qTeksObj ? $qTeksObj['nama_teks'] : '',
-                'teks_konteks'  => $qTeksObj ? $qTeksObj['isi_teks'] : '',
+                'pembahasan'    => sanitize_html_fragment($row['pembahasan']),
+                'nama_teks'     => $qTeksObj ? sanitize_plain_text($qTeksObj['nama_teks']) : '',
+                'teks_konteks'  => $qTeksObj ? sanitize_html_fragment($qTeksObj['isi_teks']) : '',
             ];
             foreach (option_letters() as $l) {
-                $item['opsi_' . $l] = tostr($row['opsi_' . $l] ?? '');
+                $item['opsi_' . $l] = sanitize_html_fragment($row['opsi_' . $l] ?? '');
             }
             $questions[] = $item;
         }
 
         return ['success' => true, 'questions' => $questions];
     } catch (Throwable $e) {
-        return err('Gagal memuat soal: ' . $e->getMessage());
+        return err('Gagal memuat soal: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -98,12 +98,25 @@ function saveQuestion($username, $token, $qData): array
 
         $opsi = [];
         foreach (option_letters() as $l) {
-            $opsi[$l] = tostr($qData['opsi_' . $l] ?? '');
+            $opsi[$l] = limit_text(sanitize_html_fragment($qData['opsi_' . $l] ?? ''), 5000);
         }
         $idTeks = tostr($qData['id_teks'] ?? '');
-        $urlGambar = tostr($qData['url_gambar'] ?? '');
-        $teksSoal = tostr($qData['teks_soal'] ?? '');
-        $pembahasan = tostr($qData['pembahasan'] ?? '');
+        $urlGambar = safe_media_url($qData['url_gambar'] ?? '');
+        $teksSoal = limit_text(sanitize_html_fragment($qData['teks_soal'] ?? ''), 20000);
+        $pembahasan = limit_text(sanitize_html_fragment($qData['pembahasan'] ?? ''), 20000);
+
+        if (trim(strip_tags($teksSoal)) === '') {
+            return err('Teks soal wajib diisi.');
+        }
+        $filledOptions = [];
+        foreach (option_letters() as $l) {
+            if (trim(strip_tags($opsi[$l])) !== '') {
+                $filledOptions[] = strtoupper($l);
+            }
+        }
+        if (!in_array($kunci, $filledOptions, true)) {
+            return err('Kunci jawaban harus salah satu opsi yang terisi (' . implode(', ', $filledOptions) . ').');
+        }
 
         if ($isEdit) {
             $idSoal = tostr($qData['id_soal']);
@@ -150,7 +163,7 @@ function saveQuestion($username, $token, $qData): array
         );
         return ['success' => true, 'message' => 'Soal baru berhasil ditambahkan.', 'id_soal' => $newQId];
     } catch (Throwable $e) {
-        return err($e->getMessage());
+        return err(client_error_message($e->getMessage()));
     }
 }
 
@@ -174,7 +187,7 @@ function deleteQuestion($username, $token, $id_soal): array
         }
         return ['success' => true, 'message' => 'Soal berhasil dihapus.'];
     } catch (Throwable $e) {
-        return err($e->getMessage());
+        return err(client_error_message($e->getMessage()));
     }
 }
 
@@ -206,7 +219,7 @@ function getExamTexts($username, $token, $id_ujian): array
         }
         return ['success' => true, 'texts' => $texts];
     } catch (Throwable $e) {
-        return err('Gagal memuat teks/konteks: ' . $e->getMessage());
+        return err('Gagal memuat teks/konteks: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -222,8 +235,8 @@ function saveExamText($username, $token, $textData): array
         return err('ID Ujian tidak valid.');
     }
 
-    $nama = trim(tostr($textData['nama_teks'] ?? ''));
-    $isi = trim(tostr($textData['isi_teks'] ?? ''));
+    $nama = limit_text(sanitize_plain_text($textData['nama_teks'] ?? ''), 200);
+    $isi = limit_text(sanitize_html_fragment($textData['isi_teks'] ?? ''), 50000);
     if ($nama === '') {
         return err('Nama/Judul teks wajib diisi.');
     }
@@ -249,7 +262,7 @@ function saveExamText($username, $token, $textData): array
         log_activity(tostr($username), 'Tambah Teks Ujian', 'Menambah teks/konteks "' . $nama . '" pada ujian ' . $idUjian);
         return ['success' => true, 'id_teks' => $newId, 'message' => 'Teks/Konteks berhasil ditambahkan.'];
     } catch (Throwable $e) {
-        return err('Gagal menyimpan teks/konteks: ' . $e->getMessage());
+        return err('Gagal menyimpan teks/konteks: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -284,7 +297,7 @@ function deleteExamText($username, $token, $id_teks): array
             'message' => 'Teks/Konteks berhasil dihapus.' . ($released > 0 ? ' ' . $released . ' butir soal kini tanpa teks.' : ''),
         ];
     } catch (Throwable $e) {
-        return err('Gagal menghapus teks/konteks: ' . $e->getMessage());
+        return err('Gagal menghapus teks/konteks: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -305,19 +318,30 @@ function importQuestions($username, $token, $id_ujian, $questionsList): array
     try {
         $urutan = next_question_order($idUjian);
         $count = 0;
+        $skipped = 0;
+        db()->beginTransaction();
 
         foreach ($questionsList as $q) {
             if (!is_array($q)) {
+                $skipped++;
                 continue;
             }
             $teks = trim(tostr($q['teks_soal'] ?? ($q['soal'] ?? '')));
-            if ($teks === '') {
+            if (trim(strip_tags($teks)) === '') {
+                $skipped++;
                 continue;
             }
 
             $kunci = strtoupper(trim(tostr($q['kunci_jawaban'] ?? '')));
-            if ($kunci === '') {
-                $kunci = 'A';
+            $filled = [];
+            foreach (option_letters() as $l) {
+                if (trim(strip_tags(tostr($q['opsi_' . $l] ?? ''))) !== '') {
+                    $filled[] = strtoupper($l);
+                }
+            }
+            if (!in_array($kunci, $filled, true)) {
+                $skipped++;
+                continue;
             }
             $bobot = (int) ($q['bobot'] ?? 0);
             if ($bobot <= 0) {
@@ -330,25 +354,43 @@ function importQuestions($username, $token, $id_ujian, $questionsList): array
                     kunci_jawaban, bobot, pembahasan, urutan)
                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 [
-                    new_id('QST'), $idUjian, $teks, tostr($q['url_gambar'] ?? ''), tostr($q['id_teks'] ?? ''),
-                    tostr($q['opsi_a'] ?? ''), tostr($q['opsi_b'] ?? ''), tostr($q['opsi_c'] ?? ''),
-                    tostr($q['opsi_d'] ?? ''), tostr($q['opsi_e'] ?? ''), tostr($q['opsi_f'] ?? ''),
-                    tostr($q['opsi_g'] ?? ''), tostr($q['opsi_h'] ?? ''), tostr($q['opsi_i'] ?? ''),
-                    tostr($q['opsi_j'] ?? ''),
-                    $kunci, $bobot, tostr($q['pembahasan'] ?? ''), $urutan++,
+                    new_id('QST'), $idUjian, limit_text(sanitize_html_fragment($teks), 20000),
+                    safe_media_url($q['url_gambar'] ?? ''), tostr($q['id_teks'] ?? ''),
+                    limit_text(sanitize_html_fragment($q['opsi_a'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_b'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_c'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_d'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_e'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_f'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_g'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_h'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_i'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_j'] ?? ''), 5000),
+                    $kunci, $bobot, limit_text(sanitize_html_fragment($q['pembahasan'] ?? ''), 20000), $urutan++,
                 ]
             );
             $count++;
         }
 
         if ($count === 0) {
+            db()->rollBack();
             return err('Tidak ada baris soal yang valid untuk disimpan.');
         }
+        db()->commit();
 
         log_activity(tostr($username), 'Import Questions', 'Berhasil mengimpor ' . $count . ' butir soal ke ujian ' . $idUjian);
-        return ['success' => true, 'count' => $count, 'message' => 'Berhasil mengimpor ' . $count . ' butir soal dari Excel.'];
+        return [
+            'success' => true,
+            'count'   => $count,
+            'skipped' => $skipped,
+            'message' => 'Berhasil mengimpor ' . $count . ' butir soal dari Excel.'
+                . ($skipped > 0 ? ' ' . $skipped . ' baris dilewati karena tidak valid.' : ''),
+        ];
     } catch (Throwable $e) {
-        return err('Gagal mengimpor soal: ' . $e->getMessage());
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        return err('Gagal mengimpor soal: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -368,14 +410,28 @@ function saveBulkQuestions($username, $token, $id_ujian, $questionsList): array
     try {
         $urutan = next_question_order($idUjian);
         $count = 0;
+        $skipped = 0;
+        db()->beginTransaction();
 
         foreach ($questionsList as $q) {
             if (!is_array($q)) {
+                $skipped++;
+                continue;
+            }
+            if (trim(strip_tags(tostr($q['teks_soal'] ?? ''))) === '') {
+                $skipped++;
                 continue;
             }
             $kunci = strtoupper(trim(tostr($q['kunci_jawaban'] ?? '')));
-            if ($kunci === '') {
-                $kunci = 'A';
+            $filled = [];
+            foreach (option_letters() as $l) {
+                if (trim(strip_tags(tostr($q['opsi_' . $l] ?? ''))) !== '') {
+                    $filled[] = strtoupper($l);
+                }
+            }
+            if (!in_array($kunci, $filled, true)) {
+                $skipped++;
+                continue;
             }
             db_exec(
                 'INSERT INTO questions (id_soal, id_ujian, teks_soal, url_gambar, id_teks,
@@ -383,20 +439,42 @@ function saveBulkQuestions($username, $token, $id_ujian, $questionsList): array
                     kunci_jawaban, bobot, pembahasan, urutan)
                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 [
-                    new_id('QST'), $idUjian, tostr($q['teks_soal'] ?? ''), tostr($q['url_gambar'] ?? ''), '',
-                    tostr($q['opsi_a'] ?? ''), tostr($q['opsi_b'] ?? ''), tostr($q['opsi_c'] ?? ''),
-                    tostr($q['opsi_d'] ?? ''), tostr($q['opsi_e'] ?? ''), tostr($q['opsi_f'] ?? ''),
-                    tostr($q['opsi_g'] ?? ''), tostr($q['opsi_h'] ?? ''), tostr($q['opsi_i'] ?? ''),
-                    tostr($q['opsi_j'] ?? ''),
-                    $kunci, 1, tostr($q['pembahasan'] ?? ''), $urutan++,
+                    new_id('QST'), $idUjian, limit_text(sanitize_html_fragment($q['teks_soal'] ?? ''), 20000),
+                    safe_media_url($q['url_gambar'] ?? ''), '',
+                    limit_text(sanitize_html_fragment($q['opsi_a'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_b'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_c'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_d'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_e'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_f'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_g'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_h'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_i'] ?? ''), 5000),
+                    limit_text(sanitize_html_fragment($q['opsi_j'] ?? ''), 5000),
+                    $kunci, 1, limit_text(sanitize_html_fragment($q['pembahasan'] ?? ''), 20000), $urutan++,
                 ]
             );
             $count++;
         }
 
+        if ($count === 0) {
+            db()->rollBack();
+            return err('Tidak ada soal valid untuk disimpan.');
+        }
+        db()->commit();
+
         log_activity(tostr($username), 'AI Generate Questions', 'Berhasil menambahkan ' . $count . ' butir soal AI ke ujian ' . $idUjian);
-        return ['success' => true, 'count' => $count, 'message' => 'Berhasil menyimpan ' . $count . ' butir soal ke bank soal.'];
+        return [
+            'success' => true,
+            'count'   => $count,
+            'skipped' => $skipped,
+            'message' => 'Berhasil menyimpan ' . $count . ' butir soal ke bank soal.'
+                . ($skipped > 0 ? ' ' . $skipped . ' soal dilewati karena tidak valid.' : ''),
+        ];
     } catch (Throwable $e) {
-        return err('Gagal menyimpan soal AI: ' . $e->getMessage());
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        return err('Gagal menyimpan soal AI: ' . client_error_message($e->getMessage()));
     }
 }

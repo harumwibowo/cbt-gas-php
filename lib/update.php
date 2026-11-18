@@ -193,6 +193,7 @@ function update_setting_put(array $pairs): void
                 [$kunci, tostr($value), 'Pembaruan aplikasi']);
         }
     }
+    settings_map(true);
 }
 
 /**
@@ -328,6 +329,32 @@ function update_cleanup_legacy_token(): void
     }
 }
 
+/** Ambil lock eksklusif agar dua pembaruan tidak berjalan bersamaan. */
+function update_acquire_lock()
+{
+    $dir = APP_ROOT . '/storage';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $path = $dir . '/update.lock';
+    $fp = @fopen($path, 'c');
+    if ($fp === false) {
+        return null;
+    }
+    if (!@flock($fp, LOCK_EX | LOCK_NB)) {
+        @fclose($fp);
+        return null;
+    }
+    @fwrite($fp, (string) getmypid() . ' ' . date('c'));
+    @fflush($fp);
+    register_shutdown_function(static function () use ($fp, $path): void {
+        @flock($fp, LOCK_UN);
+        @fclose($fp);
+        @unlink($path);
+    });
+    return $fp;
+}
+
 /**
  * Terapkan pembaruan.
  *
@@ -341,6 +368,11 @@ function update_apply(string $username, string $token, bool $force = false): arr
     }
     if (current_role($username) !== 'admin') {
         return err('Akses ditolak. Hanya Admin yang dapat memperbarui aplikasi.');
+    }
+
+    $lock = update_acquire_lock();
+    if ($lock === null) {
+        return err('Pembaruan lain sedang berjalan. Tunggu hingga selesai lalu coba lagi.');
     }
 
     update_cleanup_legacy_token();
@@ -523,7 +555,7 @@ function update_apply(string $username, string $token, bool $force = false): arr
             update_rmdir($tmp);
         }
         error_log('[CBT update] ' . $e->getMessage());
-        return ['success' => false, 'message' => 'Pembaruan gagal: ' . $e->getMessage()];
+        return ['success' => false, 'message' => client_error_message('Pembaruan gagal: ' . $e->getMessage())];
     }
 }
 

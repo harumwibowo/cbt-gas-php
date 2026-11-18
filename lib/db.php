@@ -8,7 +8,8 @@ declare(strict_types=1);
 $GLOBALS['CBT_PDO'] = null;
 
 /**
- * Koneksi PDO tunggal ke database aplikasi (dibuat otomatis bila belum ada).
+ * Koneksi PDO tunggal ke database aplikasi. Database TIDAK dibuat otomatis;
+ * bila belum ada, arahkan pengguna ke wizard setup.
  */
 function db(): PDO
 {
@@ -21,16 +22,19 @@ function db(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
     ];
-    $dsnServer = sprintf('mysql:host=%s;port=%d;charset=utf8mb4', DB_HOST, DB_PORT);
+    $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', DB_HOST, DB_PORT, DB_NAME);
 
     try {
-        $server = new PDO($dsnServer, DB_USER, DB_PASS, $options);
-        $server->exec('CREATE DATABASE IF NOT EXISTS `' . DB_NAME . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+        $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
     } catch (PDOException $e) {
-        throw new RuntimeException('Gagal terhubung ke MySQL: ' . $e->getMessage(), 0, $e);
+        // 1049 = database belum ada. Arahkan ke wizard setup, jangan membuat
+        // database secara otomatis pada setiap koneksi runtime.
+        $message = 'Gagal terhubung ke database "' . DB_NAME . '". '
+            . 'Jalankan halaman setup atau buat database terlebih dahulu. '
+            . '(kode ' . (int) $e->getCode() . ')';
+        throw new RuntimeException($message, 0, $e);
     }
 
-    $pdo = new PDO($dsnServer . ';dbname=' . DB_NAME, DB_USER, DB_PASS, $options);
     $GLOBALS['CBT_PDO'] = $pdo;
 
     return $pdo;
@@ -110,6 +114,9 @@ function ensure_schema(): void
             'tingkat'      => "VARCHAR(50) NOT NULL DEFAULT '-'",
             'password_enc' => 'TEXT NULL',
         ],
+        'results' => [
+            'deadline_at' => 'DATETIME NULL',
+        ],
     ];
     foreach ($columns as $table => $defs) {
         $existing = array_column(
@@ -123,8 +130,141 @@ function ensure_schema(): void
         }
     }
 
+    db_apply_migrations();
     seed_defaults();
     $done = true;
+}
+
+/** True bila sebuah index sudah ada pada tabel. */
+function db_index_exists(string $table, string $index): bool
+{
+    try {
+        foreach (db_all('SHOW INDEX FROM `' . $table . '`') as $row) {
+            if (strcasecmp((string) ($row['Key_name'] ?? ''), $index) === 0) {
+                return true;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[CBT schema] gagal membaca index: ' . $e->getMessage());
+    }
+    return false;
+}
+
+/** Apakah migrasi dengan nomor tertentu sudah dijalankan. */
+function db_migration_applied(int $version): bool
+{
+    try {
+        return (int) db_val('SELECT COUNT(*) FROM schema_migrations WHERE version = ?', [$version], 0) > 0;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/** Tandai migrasi selesai. */
+function db_migration_mark(int $version): void
+{
+    try {
+        db_exec('INSERT IGNORE INTO schema_migrations (version) VALUES (?)', [$version]);
+    } catch (Throwable $e) {
+        error_log('[CBT schema] gagal menandai migrasi ' . $version . ': ' . $e->getMessage());
+    }
+}
+
+/**
+ * Migrasi data satu kali. Dijalankan setelah tabel dipastikan ada.
+ *
+ * Versi 1: normalisasi kolom results + hapus duplikat lama + unique index
+ *          (id_ujian, username_siswa, percobaan_ke). Ini menggantikan praktik
+ *          lama yang menghapus duplikat pada jalur baca.
+ * Versi 2: index tambahan untuk rekap dan log.
+ */
+function db_apply_migrations(): void
+{
+    // ---- v1: results unik per percobaan ------------------------------------
+    if (!db_migration_applied(1)) {
+        try {
+            db()->exec("UPDATE results SET username_siswa = LOWER(TRIM(username_siswa)) WHERE username_siswa <> LOWER(TRIM(username_siswa))");
+            db()->exec("UPDATE results SET id_ujian = TRIM(id_ujian) WHERE id_ujian <> TRIM(id_ujian)");
+
+            if (!db_index_exists('results', 'uq_result_attempt')) {
+                $duplicates = db_all(
+                    'SELECT id_ujian, username_siswa, percobaan_ke, COUNT(*) AS total
+                     FROM results
+                     GROUP BY id_ujian, username_siswa, percobaan_ke
+                     HAVING total > 1'
+                );
+                foreach ($duplicates as $dup) {
+                    $rows = db_all(
+                        "SELECT id_hasil FROM results
+                         WHERE id_ujian = ? AND username_siswa = ? AND percobaan_ke = ?
+                         ORDER BY (status = 'SUBMITTED') DESC, nilai_akhir DESC, id_hasil ASC",
+                        [
+                            (string) $dup['id_ujian'],
+                            (string) $dup['username_siswa'],
+                            (int) $dup['percobaan_ke'],
+                        ]
+                    );
+                    $keep = true;
+                    foreach ($rows as $row) {
+                        if ($keep) {
+                            $keep = false;
+                            continue;
+                        }
+                        db_exec('DELETE FROM results WHERE id_hasil = ?', [(string) $row['id_hasil']]);
+                    }
+                }
+                db()->exec('ALTER TABLE results ADD UNIQUE KEY uq_result_attempt (id_ujian, username_siswa, percobaan_ke)');
+            }
+            db_migration_mark(1);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v1 belum selesai: ' . $e->getMessage());
+        }
+    }
+
+    // ---- v2: index pendukung ------------------------------------------------
+    if (!db_migration_applied(2)) {
+        try {
+            if (!db_index_exists('results', 'idx_results_exam_status')) {
+                db()->exec('ALTER TABLE results ADD KEY idx_results_exam_status (id_ujian, status)');
+            }
+            if (!db_index_exists('logs', 'idx_logs_time')) {
+                db()->exec('ALTER TABLE logs ADD KEY idx_logs_time (`timestamp`)');
+            }
+            if (!db_index_exists('logs', 'idx_logs_type_time')) {
+                db()->exec('ALTER TABLE logs ADD KEY idx_logs_type_time (jenis_kejadian, `timestamp`)');
+            }
+            if (!db_index_exists('exams', 'idx_exams_created')) {
+                db()->exec('ALTER TABLE exams ADD KEY idx_exams_created (created_at)');
+            }
+            if (!db_index_exists('questions', 'idx_questions_exam_order')) {
+                db()->exec('ALTER TABLE questions ADD KEY idx_questions_exam_order (id_ujian, urutan)');
+            }
+            db_migration_mark(2);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v2 belum selesai: ' . $e->getMessage());
+        }
+    }
+
+    // ---- v3: hapus seluruh password yang dapat didekripsi -------------------
+    if (!db_migration_applied(3)) {
+        try {
+            db()->exec('UPDATE users SET password_enc = NULL WHERE password_enc IS NOT NULL');
+            db_migration_mark(3);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v3 belum selesai: ' . $e->getMessage());
+        }
+    }
+
+    // Versi 4: token sesi mentah di users.token_session tidak dipakai lagi.
+    // Semua sesi aktif sudah punya baris ber-hash di tabel sessions.
+    if (!db_migration_applied(4)) {
+        try {
+            db_exec('UPDATE users SET token_session = NULL WHERE token_session IS NOT NULL');
+            db_migration_mark(4);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v4 belum selesai: ' . $e->getMessage());
+        }
+    }
 }
 
 /**
@@ -143,12 +283,12 @@ function seed_defaults(): void
     // Akun admin default
     $hasAdmin = (int) db_val('SELECT COUNT(*) FROM users WHERE username = ?', ['admin'], 0);
     if ($hasAdmin === 0) {
-        // Password disimpan sebagai hash; password_enc hanya dipakai untuk
-        // mencetak password siswa pada kartu ujian (AES-256-GCM).
+        // Password disimpan sebagai hash satu arah. password_enc (legacy)
+        // selalu diisi NULL karena tidak ada lagi password yang dapat dipulihkan.
         db_exec(
             'INSERT INTO users (id_user, username, password, password_enc, nama_lengkap, role, kelas, token_session, status_aktif, sesi, tingkat)
              VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-            [new_id('USR'), 'admin', hash_password('admin123'), enc_secret('admin123') ?? '',
+            [new_id('USR'), 'admin', hash_password('admin123'), null,
              'Administrator CBT', 'Admin', 'Semua', '', 'Aktif', 'Semua', '-']
         );
     }

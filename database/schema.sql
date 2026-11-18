@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS `sesi` (
   `id_sesi`    VARCHAR(40)  NOT NULL,
   `nama_sesi`  VARCHAR(150) NOT NULL DEFAULT '',
   `keterangan` VARCHAR(255) NOT NULL DEFAULT '',
-  PRIMARY KEY (`id_sesi`)
+  PRIMARY KEY (`id_sesi`),
+  UNIQUE KEY `uq_sesi_nama` (`nama_sesi`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `exams` (
@@ -101,10 +102,13 @@ CREATE TABLE IF NOT EXISTS `results` (
   `detail_jawaban`     LONGTEXT     NULL,
   `soal_terpilih`      LONGTEXT     NULL,
   `percobaan_ke`       INT          NOT NULL DEFAULT 1,
+  `deadline_at`        DATETIME     NULL,
   PRIMARY KEY (`id_hasil`),
+  UNIQUE KEY `uq_result_attempt` (`id_ujian`, `username_siswa`, `percobaan_ke`),
   KEY `idx_results_ujian` (`id_ujian`),
   KEY `idx_results_siswa` (`username_siswa`),
-  KEY `idx_results_ujian_siswa` (`id_ujian`, `username_siswa`)
+  KEY `idx_results_ujian_siswa` (`id_ujian`, `username_siswa`),
+  KEY `idx_results_exam_status` (`id_ujian`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `logs` (
@@ -127,6 +131,39 @@ CREATE TABLE IF NOT EXISTS `settings` (
 
 -- Tabel penyimpanan berkas gambar (pengganti URL / ID Google Drive).
 -- Data biner disimpan langsung di MySQL agar aplikasi mandiri (tanpa storage eksternal).
+CREATE TABLE IF NOT EXISTS `sessions` (
+  `id_session`   VARCHAR(40)  NOT NULL,
+  `username`     VARCHAR(100) NOT NULL DEFAULT '',
+  `token_hash`   CHAR(64)     NOT NULL DEFAULT '',
+  `created_at`   DATETIME     NOT NULL,
+  `last_seen_at` DATETIME     NOT NULL,
+  `expires_at`   DATETIME     NOT NULL,
+  `ip`           VARCHAR(45)  NOT NULL DEFAULT '',
+  `user_agent`   VARCHAR(255) NOT NULL DEFAULT '',
+  `revoked_at`   DATETIME     NULL,
+  PRIMARY KEY (`id_session`),
+  UNIQUE KEY `uq_sessions_token` (`token_hash`),
+  KEY `idx_sessions_user` (`username`),
+  KEY `idx_sessions_expiry` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `login_attempts` (
+  `id`           BIGINT       NOT NULL AUTO_INCREMENT,
+  `username`     VARCHAR(100) NOT NULL DEFAULT '',
+  `ip`           VARCHAR(45)  NOT NULL DEFAULT '',
+  `attempted_at` DATETIME     NOT NULL,
+  `success`      TINYINT(1)   NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_attempts_user_time` (`username`, `attempted_at`),
+  KEY `idx_attempts_ip_time` (`ip`, `attempted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `schema_migrations` (
+  `version`    INT          NOT NULL,
+  `applied_at` TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `media` (
   `id_media`   VARCHAR(40)  NOT NULL,
   `nama_file`  VARCHAR(255) NOT NULL DEFAULT '',

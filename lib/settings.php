@@ -27,9 +27,18 @@ function settings_defaults(): array
 
 /**
  * Ambil seluruh pengaturan sebagai array asosiatif (kunci huruf kecil).
+ * Hasil di-cache per request; gunakan $refresh setelah menulis pengaturan.
  */
-function settings_map(): array
+function settings_map(bool $refresh = false): array
 {
+    static $cache = null;
+    if ($refresh) {
+        $cache = null;
+    }
+    if ($cache !== null) {
+        return $cache;
+    }
+
     $settings = settings_defaults();
     try {
         $rows = db_all('SELECT kunci, nilai FROM settings');
@@ -42,19 +51,35 @@ function settings_map(): array
     } catch (Throwable $e) {
         error_log('Gagal membaca settings: ' . $e->getMessage());
     }
+    $cache = $settings;
     return $settings;
 }
 
-/** Endpoint publik getSettings: { success, settings }.
- *
- * `app_version` = nama versi rilis dari berkas VERSION (dipakai label versi di
- * halaman login, sehingga ikut berganti setelah pembaruan aplikasi).
- */
-function get_settings(): array
+/** Bagian pengaturan yang aman untuk pengunjung tanpa login. */
+function settings_public_map(): array
 {
+    $settings = settings_map();
+    // Jangan pernah mengirim kredensial/secret ke endpoint publik.
+    unset($settings['gemini_api_key']);
+    return $settings;
+}
+
+/** Endpoint getSettings: { success, settings }.
+ *
+ * Tanpa sesi Admin, hanya pengaturan publik yang dikembalikan. Dengan sesi
+ * Admin yang valid, seluruh pengaturan (termasuk kunci Gemini) tersedia untuk
+ * halaman Pengaturan.
+ */
+function get_settings($username = '', $token = ''): array
+{
+    $isAdmin = false;
+    if (tostr($username) !== '' && tostr($token) !== '' && validate_session($username, $token)) {
+        $isAdmin = strtolower(trim(current_role(tostr($username)))) === 'admin';
+    }
+
     return [
         'success'     => true,
-        'settings'    => settings_map(),
+        'settings'    => $isAdmin ? settings_map() : settings_public_map(),
         'timezone'    => timezone_info(),
         'app_version' => app_version_name(),
     ];
@@ -84,19 +109,11 @@ function get_allowed_student_browsers(): string
  */
 function enforce_student_session_limit(int $limit): int
 {
-    if ($limit < 1) {
-        $limit = 1;
-    }
-    $rows = db_all("SELECT id_user, token_session FROM users WHERE LOWER(TRIM(role)) = 'siswa'");
+    $limit = max(1, min(50, $limit));
+    $rows = db_all("SELECT username FROM users WHERE LOWER(TRIM(role)) = 'siswa'");
     $trimmed = 0;
     foreach ($rows as $row) {
-        $tokens = parse_session_tokens($row['token_session']);
-        if (count($tokens) <= $limit) {
-            continue;
-        }
-        $kept = array_slice($tokens, -$limit);
-        $trimmed += count($tokens) - count($kept);
-        db_exec('UPDATE users SET token_session = ? WHERE id_user = ?', [implode(',', $kept), $row['id_user']]);
+        $trimmed += session_trim_to(tostr($row['username']), $limit);
     }
     return $trimmed;
 }
@@ -146,10 +163,15 @@ function save_settings($username, $token, $settingsData): array
 
         foreach ($settingsData as $key => $value) {
             $normalizedKey = strtolower(trim((string) $key));
-            if ($normalizedKey === '') {
+            if ($normalizedKey === '' || !array_key_exists($normalizedKey, settings_descriptions())) {
                 continue;
             }
-            $val = tostr($value);
+            $val = trim(tostr($value));
+
+            // Jangan menghapus API key hanya karena form mengirim nilai kosong.
+            if ($normalizedKey === 'gemini_api_key' && $val === '') {
+                continue;
+            }
 
             if ($normalizedKey === 'max_student_sessions') {
                 $limitNum = (int) $val;
@@ -185,6 +207,7 @@ function save_settings($username, $token, $settingsData): array
         }
 
         // Pastikan pembacaan kebijakan pelanggaran berikutnya memakai nilai baru.
+        settings_map(true);
         violation_policy(true);
 
         // Terapkan zona waktu baru pada request berikutnya (dan segera untuk sisa request ini).
@@ -235,9 +258,9 @@ function save_settings($username, $token, $settingsData): array
 /**
  * Alias endpoint getSettings (nama action dari klien Apps Script).
  */
-function getSettings(): array
+function getSettings($username = '', $token = ''): array
 {
-    return get_settings();
+    return get_settings($username, $token);
 }
 
 /**

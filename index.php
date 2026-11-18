@@ -64,5 +64,11 @@ if (!str_contains($html, 'assets/js/rpc-shim.js')) {
 }
 
 header('Content-Type: text/html; charset=utf-8');
-header('X-Frame-Options: ALLOWALL');
+header('X-Frame-Options: SAMEORIGIN');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+// CSP tetap mengizinkan inline script karena Index.html adalah SPA satu berkas,
+// tetapi mematikan object/plugin dan membatasi frame serta sumber eksternal.
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
 echo $html;

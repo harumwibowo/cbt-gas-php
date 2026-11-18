@@ -122,7 +122,6 @@ function getExamResults($username, $token, $id_ujian): array
 
         // Kelompokkan per siswa → per percobaan, sambil menandai duplikat
         $grouped = [];
-        $duplicateIds = [];
         foreach ($rows as $row) {
             $userUname = trim(tostr($row['username_siswa']));
             $userKey = strtolower($userUname);
@@ -149,26 +148,21 @@ function getExamResults($username, $token, $id_ujian): array
             ];
 
             $attemptKey = (string) $attemptNo;
-            $existing = $grouped[$userKey]['attempts'][$attemptKey] ?? null;
+            // Kunci HARUS menyertakan id_ujian: saat rekap "semua ujian",
+            // percobaan ke-1 ujian A dan ujian B tidak boleh bertabrakan.
+            $groupKey = $userKey . '|' . strtolower(trim(tostr($row['id_ujian'])));
+            $existing = $grouped[$groupKey]['attempts'][$attemptKey] ?? null;
             if ($existing === null) {
-                $grouped[$userKey]['attempts'][$attemptKey] = $record;
+                $grouped[$groupKey]['attempts'][$attemptKey] = $record;
             } elseif ($record['status'] === 'SUBMITTED' && $existing['status'] !== 'SUBMITTED') {
-                $duplicateIds[] = $existing['id_hasil'];
-                $grouped[$userKey]['attempts'][$attemptKey] = $record;
+                $grouped[$groupKey]['attempts'][$attemptKey] = $record;
             } elseif ($record['status'] === $existing['status'] && $record['nilai_akhir'] > $existing['nilai_akhir']) {
-                $duplicateIds[] = $existing['id_hasil'];
-                $grouped[$userKey]['attempts'][$attemptKey] = $record;
-            } else {
-                $duplicateIds[] = $record['id_hasil'];
+                $grouped[$groupKey]['attempts'][$attemptKey] = $record;
             }
         }
 
-        // Bersihkan duplikat nyata dari database
-        foreach (array_unique($duplicateIds) as $dupId) {
-            if ($dupId !== '') {
-                db_exec('DELETE FROM results WHERE id_hasil = ?', [$dupId]);
-            }
-        }
+        // Duplikat lama dibersihkan oleh migrasi database (unique index),
+        // bukan pada jalur baca. Jalur baca tidak boleh menghapus data.
 
         // Susun ringkasan per siswa
         $results = [];
@@ -235,7 +229,7 @@ function getExamResults($username, $token, $id_ujian): array
         if ($targetExamId !== '') {
             $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$targetExamId]);
             if ($examRow) {
-                $examInfo['nama_ujian'] = tostr($examRow['nama_ujian']) !== '' ? tostr($examRow['nama_ujian']) : $targetExamId;
+                $examInfo['nama_ujian'] = tostr($examRow['nama_ujian']) !== '' ? sanitize_plain_text($examRow['nama_ujian']) : $targetExamId;
                 $examInfo['kelas'] = tostr($examRow['kelas']);
                 $examInfo['sesi'] = tostr($examRow['sesi']);
                 $examInfo['tipe_peserta'] = tostr($examRow['tipe_peserta']) !== '' ? strtolower(tostr($examRow['tipe_peserta'])) : 'general';
@@ -260,16 +254,16 @@ function getExamResults($username, $token, $id_ujian): array
                 $qTeksObj = $textMap[$qIdTeks] ?? null;
                 $qObj = [
                     'id_soal'       => tostr($qRow['id_soal']),
-                    'teks_soal'     => tostr($qRow['teks_soal']),
-                    'url_gambar'    => tostr($qRow['url_gambar']),
+                    'teks_soal'     => sanitize_html_fragment($qRow['teks_soal']),
+                    'url_gambar'    => safe_media_url($qRow['url_gambar']),
                     'kunci_jawaban' => strtoupper(trim(tostr($qRow['kunci_jawaban']))),
                     'bobot'         => (int) $qRow['bobot'] > 0 ? (int) $qRow['bobot'] : 1,
                     'id_teks'       => $qIdTeks,
-                    'nama_teks'     => $qTeksObj ? $qTeksObj['nama_teks'] : '',
-                    'teks_konteks'  => $qTeksObj ? $qTeksObj['isi_teks'] : '',
+                    'nama_teks'     => $qTeksObj ? sanitize_plain_text($qTeksObj['nama_teks']) : '',
+                    'teks_konteks'  => $qTeksObj ? sanitize_html_fragment($qTeksObj['isi_teks']) : '',
                 ];
                 foreach (option_letters() as $l) {
-                    $qObj['opsi_' . $l] = tostr($qRow['opsi_' . $l] ?? '');
+                    $qObj['opsi_' . $l] = sanitize_html_fragment($qRow['opsi_' . $l] ?? '');
                 }
                 $examQuestions[] = $qObj;
             }
@@ -282,7 +276,7 @@ function getExamResults($username, $token, $id_ujian): array
             'questions' => $examQuestions,
         ];
     } catch (Throwable $e) {
-        return err('Gagal memuat rekapitulasi nilai: ' . $e->getMessage());
+        return err('Gagal memuat rekapitulasi nilai: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -314,7 +308,7 @@ function deleteStudentExamResult($username, $token, $id_ujian, $username_siswa):
         );
         return ['success' => true, 'message' => 'Data hasil ujian siswa berhasil dihapus.'];
     } catch (Throwable $e) {
-        return err('Gagal menghapus data ujian siswa: ' . $e->getMessage());
+        return err('Gagal menghapus data ujian siswa: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -354,32 +348,28 @@ function getStudentViolations($username, $token, $id_ujian, $username_siswa): ar
             $perAttempt[] = ['percobaan_ke' => (int) $atNo, 'jumlah_pelanggaran' => (int) $atViol];
         }
 
-        // Log pelanggaran terkait ujian ini
+        // Log pelanggaran terkait ujian ini, difilter di SQL (bukan memindai
+        // seluruh log pengguna di PHP).
         $logsList = [];
         $logRows = db_all(
-            'SELECT `timestamp`, username, jenis_kejadian, keterangan FROM logs WHERE LOWER(TRIM(username)) = ? ORDER BY id ASC',
-            [$targetUser]
+            "SELECT `timestamp`, username, jenis_kejadian, keterangan
+             FROM logs
+             WHERE LOWER(TRIM(username)) = ?
+               AND keterangan LIKE ?
+               AND (LOWER(jenis_kejadian) LIKE '%violation%'
+                    OR LOWER(jenis_kejadian) LIKE '%tab%'
+                    OR LOWER(jenis_kejadian) LIKE '%fullscreen%'
+                    OR LOWER(keterangan) LIKE '%pelanggaran%'
+                    OR LOWER(jenis_kejadian) LIKE '%auto submit%')
+             ORDER BY id ASC",
+            [$targetUser, '%' . $targetExamId . '%']
         );
         foreach ($logRows as $row) {
-            $rowJenis = trim(tostr($row['jenis_kejadian']));
-            $rowKet = trim(tostr($row['keterangan']));
-            $jenisLower = strtolower($rowJenis);
-            $ketLower = strtolower($rowKet);
-
-            $isRelatedExam = $targetExamId === '' || str_contains($rowKet, $targetExamId);
-            $isViolation = str_contains($jenisLower, 'violation')
-                || str_contains($jenisLower, 'tab')
-                || str_contains($jenisLower, 'fullscreen')
-                || str_contains($ketLower, 'pelanggaran')
-                || (str_contains($jenisLower, 'auto submit') && str_contains($ketLower, 'pelanggaran'));
-
-            if ($isRelatedExam && $isViolation) {
-                $logsList[] = [
-                    'timestamp'  => dt_display(tostr($row['timestamp'])),
-                    'jenis'      => $rowJenis,
-                    'keterangan' => $rowKet,
-                ];
-            }
+            $logsList[] = [
+                'timestamp'  => dt_display(tostr($row['timestamp'])),
+                'jenis'      => trim(tostr($row['jenis_kejadian'])),
+                'keterangan' => trim(tostr($row['keterangan'])),
+            ];
         }
 
         return [
@@ -389,7 +379,7 @@ function getStudentViolations($username, $token, $id_ujian, $username_siswa): ar
             'violations'      => $logsList,
         ];
     } catch (Throwable $e) {
-        return err('Gagal mengambil log pelanggaran: ' . $e->getMessage());
+        return err('Gagal mengambil log pelanggaran: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -495,6 +485,6 @@ function regradeExamResults($username, $token, $id_ujian): array
             'students'   => $studentCount,
         ];
     } catch (Throwable $e) {
-        return err('Gagal menilai ulang: ' . $e->getMessage());
+        return err('Gagal menilai ulang: ' . client_error_message($e->getMessage()));
     }
 }

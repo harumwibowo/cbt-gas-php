@@ -27,7 +27,7 @@ function getSessions($username, $token): array
         }
         return ['success' => true, 'sessions' => $sessions];
     } catch (Throwable $e) {
-        return err('Gagal memuat data sesi: ' . $e->getMessage());
+        return err('Gagal memuat data sesi: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -44,8 +44,17 @@ function saveSession($username, $token, $sessionData): array
         if ($namaVal === '') {
             return err('Nama sesi tidak boleh kosong.');
         }
-        $ketVal = trim(tostr($sessionData['keterangan'] ?? ''));
+        $ketVal = limit_text(sanitize_plain_text($sessionData['keterangan'] ?? ''), 255);
+        $namaVal = limit_text(sanitize_plain_text($namaVal), 150);
         $idSesi = trim(tostr($sessionData['id_sesi'] ?? ''));
+
+        $duplicate = db_one(
+            'SELECT id_sesi FROM sesi WHERE LOWER(TRIM(nama_sesi)) = ? AND id_sesi <> ? LIMIT 1',
+            [strtolower($namaVal), $idSesi]
+        );
+        if ($duplicate) {
+            return err('Nama sesi sudah digunakan.');
+        }
 
         if ($idSesi !== '') {
             $exists = db_one('SELECT id_sesi FROM sesi WHERE id_sesi = ?', [$idSesi]);
@@ -62,7 +71,7 @@ function saveSession($username, $token, $sessionData): array
         log_activity(tostr($username), 'Create Session', 'Menambahkan sesi baru: ' . $namaVal);
         return ['success' => true, 'message' => 'Sesi baru berhasil ditambahkan.', 'id_sesi' => $newSessionId];
     } catch (Throwable $e) {
-        return err('Gagal menyimpan sesi: ' . $e->getMessage());
+        return err('Gagal menyimpan sesi: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -83,6 +92,6 @@ function deleteSession($username, $token, $id_sesi): array
         log_activity(tostr($username), 'Delete Session', 'Menghapus sesi: ' . (tostr($row['nama_sesi']) !== '' ? tostr($row['nama_sesi']) : $idSesi));
         return ['success' => true, 'message' => 'Sesi berhasil dihapus.'];
     } catch (Throwable $e) {
-        return err('Gagal menghapus sesi: ' . $e->getMessage());
+        return err('Gagal menghapus sesi: ' . client_error_message($e->getMessage()));
     }
 }

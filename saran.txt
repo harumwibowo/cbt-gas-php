@@ -1,0 +1,1138 @@
+================================================================================
+SARAN OPTIMALISASI PERFORMA, PERBAIKAN BUG, DAN PENGEMBANGAN FITUR
+Aplikasi : CBT GAS - Platform Ujian Online (PHP native + MySQL)
+Versi    : 1.0.6 (berkas VERSION)
+Tanggal  : 2026-11-18
+Sifat    : dokumen saran. Seluruh item Bagian 1 sudah diimplementasikan
+           dan ditandai (SELESAI); bagian lain masih berupa saran.
+Verifikasi: tests/e2e_test.py -> 62 PASS, 0 FAIL (PHP 8.3, MySQL 8.4).
+Metode   : telaah statis seluruh kode PHP/JS/skema, penelusuran alur RPC, dan
+           verifikasi dokumentasi lewat MCP Context7:
+           - PHP Manual (/websites/php_net_manual_en)
+           - MySQL Documentation (/websites/dev_mysql_doc)
+================================================================================
+
+
+0. RINGKASAN EKSEKUTIF
+--------------------------------------------------------------------------------
+Arsitektur aplikasi sudah rapi untuk ukuran PHP native: satu endpoint RPC,
+modul terpisah, prepared statement, password di-hash, dan bootstrap skema
+idempoten. Namun ada tiga kelompok masalah yang perlu didahulukan:
+
+  A. OTORISASI. Banyak endpoint hanya memeriksa "sesi valid", tetapi tidak
+     memeriksa peran (Admin/Guru/Siswa) atau kepemilikan ujian. Akibatnya akun
+     siswa yang login dapat memanggil endpoint admin/guru secara langsung.
+     Ini adalah risiko tertinggi di proyek ini.
+
+  B. INTEGRITAS UJIAN. Batas waktu ujian dan durasi hanya dijaga di browser.
+     Server tidak pernah memeriksa waktu_mulai, waktu_selesai, maupun
+     durasi_menit. Token ujian juga ikut dikirim ke siswa.
+
+  C. BEBAN PER REQUEST. Setiap request (termasuk setiap gambar media.php)
+     menjalankan CREATE DATABASE, seluruh CREATE TABLE, SHOW COLUMNS, dan
+     seed_defaults. Ditambah settings_map() yang tidak di-cache dan query yang
+     membungkus kolom dengan LOWER()/TRIM(), performa akan turun drastis saat
+     ujian serentak.
+
+Prioritas yang disarankan:
+
+  P0 (segera, sebelum dipakai ujian sungguhan)
+     1. Tambahkan RBAC terpusat pada semua action RPC.
+     2. Tutup kebocoran API key Gemini pada getSettings.
+     3. Kunci setup.php agar tidak bisa dijalankan ulang tanpa otorisasi.
+     4. Jangan kirim token_ujian ke siswa.
+     5. Tegakkan waktu ujian & durasi di server.
+     6. Hentikan penghapusan baris results pada jalur baca.
+     7. Perbaiki manajemen sesi (kedaluwarsa, hash token, cookie HttpOnly).
+     8. Hapus penyimpanan password yang bisa didekripsi (password_enc).
+     9. Amankan output HTML (stored XSS) dan tambahkan CSP.
+
+  P1 (1-2 sprint)
+     - Validasi input ujian/soal, transaksi database, unique constraint results.
+     - Index dan normalisasi kolom agar query memakai index.
+     - Cache pengaturan, hentikan DDL per request, pindahkan CREATE DATABASE.
+     - Rate limit login, logging login gagal, pesan error generik.
+     - Pecah Index.html 656 KB menjadi aset ter-cache + kompresi.
+
+  P2 (pengembangan)
+     - Bank soal lintas ujian, analisis butir soal, esai, export, PWA, 2FA, dll.
+       (lihat Bagian 4)
+
+
+1. BUG KRITIS, CELAH KEAMANAN, DAN PERBAIKANNYA
+--------------------------------------------------------------------------------
+
+1.1 [P0] Banyak endpoint tidak memeriksa peran / kepemilikan ujian (SELESAI)
+--------------------------------------------------------------------------------
+Bukti (fungsi hanya memanggil validate_session, tanpa current_role /
+can_manage_exam):
+  - modules/admin.php:9    getUsers
+  - modules/admin.php:92   getAdminData
+  - modules/admin.php:195  saveUser
+  - modules/admin.php:325  deleteUser
+  - modules/admin.php:478  importUsers
+  - modules/sessions.php:35 saveSession
+  - modules/sessions.php:70 deleteSession
+  - modules/exams.php:117   saveExam
+  - modules/exams.php:291   deleteExam
+  - modules/questions.php:35 getExamQuestions (mengembalikan kunci_jawaban)
+  - modules/questions.php:81 saveQuestion
+  - modules/questions.php:158 deleteQuestion
+  - modules/questions.php:214 saveExamText
+  - modules/questions.php:257 deleteExamText
+  - modules/questions.php:292 importQuestions
+  - modules/questions.php:358 saveBulkQuestions
+  - modules/results.php:86  getExamResults
+  - modules/results.php:290 deleteStudentExamResult
+  - modules/results.php:322 getStudentViolations
+  - modules/exams.php:67    getTeacherExams (filter hanya jika role = guru,
+    sehingga siswa melihat SEMUA ujian beserta token_ujian)
+
+Dampak:
+  - Siswa dapat membuat akun Admin baru lewat saveUser/importUsers.
+  - Siswa dapat menghapus pengguna, ujian, soal, dan hasil ujian.
+  - Siswa dapat membaca kunci jawaban lewat getExamQuestions/getExamResults.
+  - Siswa dapat mengubah/menghapus soal dan teks ujian.
+  - Siswa dapat membaca nilai, jawaban, dan log pelanggaran siswa lain.
+  - Ini bukan hanya bug UI: api.php menerima action apa pun dalam whitelist
+    selama token valid, sehingga pemanggilan langsung dari curl/console berhasil.
+
+Perbaikan yang disarankan:
+  1. Buat satu lapisan otorisasi terpusat, lalu panggil di awal setiap action,
+     bukan berserak di dalam modul. Contoh:
+
+       // lib/rbac.php
+       function require_role(string $username, array $roles): void {
+           if (!in_array(current_role($username), $roles, true)) {
+               throw new ForbiddenException('Akses ditolak.');
+           }
+       }
+       function require_exam_access(string $username, string $idUjian): array {
+           $exam = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$idUjian]);
+           if (!$exam) throw new NotFoundException('Ujian tidak ditemukan.');
+           if (!can_manage_exam($exam, $username)) {
+               throw new ForbiddenException('Anda tidak berhak mengelola ujian ini.');
+           }
+           return $exam;
+       }
+
+  2. Petakan izin per action di satu tempat, misalnya:
+       - Admin  : semua action.
+       - Guru   : exam/question/text/results untuk ujian miliknya/kolaborator,
+                  getUsers (hanya siswa kelasnya), kartu ujian kelasnya.
+       - Siswa  : getStudentAvailableExams, startStudentExam, autosaveExam,
+                  recordViolation, submitExam, getStudentExamReview, logout,
+                  changePassword, getSettingsVersiPublik.
+  3. getTeacherExams: untuk role siswa, langsung tolak (jangan kirim daftar).
+  4. Tambahkan uji otomatis "negative authorization": login sebagai siswa,
+     lalu panggil setiap action guru/admin dan pastikan ditolak.
+
+Referensi pola: PHP manual tentang password/session tidak secara langsung
+membahas RBAC, tetapi prinsip "server-side authorization" sama pentingnya
+dengan password_verify: jangan pernah mengandalkan UI untuk membatasi aksi.
+
+
+1.2 [P0] API key Gemini bocor ke publik lewat getSettings (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/settings.php:53-63  get_settings() mengembalikan settings_map() utuh.
+  - lib/settings.php:31     settings_map() memuat 'gemini_api_key'.
+  - api.php                 'getSettings' ada di ALLOWED_ACTIONS dan tidak
+                            memerlukan sesi.
+
+Dampak:
+  Siapa pun yang dapat membuka aplikasi (bahkan sebelum login) dapat memanggil
+  POST api.php?action=getSettings dan membaca API key Gemini, lalu memakainya
+  atas biaya sekolah.
+
+Perbaikan:
+  1. Pisahkan pengaturan publik dan rahasia:
+       settings_public_map() -> nama_sekolah, logo_url, tahun_ajaran,
+       zona_waktu, wajib_fullscreen, deteksi_tab_switch, blokir_aksi,
+       dynamic_watermark, app_version.
+       settings_admin_map()  -> semua kunci, hanya untuk Admin.
+  2. getSettings hanya mengembalikan settings_public_map().
+  3. Simpan API key di environment (CBT_GEMINI_KEY) atau tabel terpisah yang
+     tidak pernah dibaca endpoint publik; tampilkan versi tersamar
+     ("AIza...9f2") di halaman Pengaturan.
+  4. Audit semua endpoint yang mengembalikan settings_map() mentah.
+
+
+1.3 [P0] setup.php dapat dijalankan ulang tanpa autentikasi (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - setup.php:14  parameter force hanya memengaruhi tampilan form.
+  - setup.php:35  action=install langsung memanggil setup_run().
+  - Blok "sudah terpasang?" (setup.php:51) berada SETELAH blok API, sehingga
+    POST setup.php?action=install tetap diproses walau aplikasi sudah terpasang.
+  - lib/setup.php:159 setup_run() menulis config/database.json lebih dulu.
+
+Dampak:
+  Penyerang tanpa login dapat mengganti kredensial database ke database
+  miliknya (mengarahkan aplikasi ke data palsu), atau membuat aplikasi tidak
+  bisa dipakai (denial of service). Ini juga jalan untuk menyuntikkan akun
+  admin baru lewat database penyerang.
+
+Perbaikan:
+  1. Tolak action=install jika config sudah ada, database dapat dihubungi, dan
+     sudah ada akun Admin - kecuali diminta lewat CLI atau env
+     CBT_ALLOW_REINSTALL=1.
+  2. Untuk mode perbaikan darurat, minta token sekali pakai yang dibuat di
+     server (file config/reinstall.token, 0600) dan tampilkan hanya lewat CLI.
+  3. Batasi setup.php dengan IP lokal pada konfigurasi web server, atau
+     hapus/rename setelah instalasi.
+  4. Jangan menimpa config/database.json secara langsung; tulis ke file
+     sementara lalu rename atomik setelah koneksi diuji.
+
+
+1.4 [P0] Token ujian dikirim ke siswa (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - modules/student.php:271,280  getStudentAvailableExams mengembalikan
+    token_ujian apa adanya (bukan hanya has_token).
+  - modules/student_exam.php:42  startStudentExam juga mengembalikan
+    exam.token_ujian pada respons.
+
+Dampak:
+  Pemeriksaan token di startStudentExam (baris 129-135) menjadi tidak berarti:
+  siswa dapat membaca token dari JSON dan memasukkannya sendiri. Token juga
+  terlihat di localStorage/console/log browser.
+
+Perbaikan:
+  1. Hapus token_ujian dari semua respons siswa; cukup kirim has_token: true.
+  2. Validasi token selalu di server (sudah ada), dan jangan pernah
+     mengembalikan nilai token setelah verifikasi.
+  3. Pertimbangkan token per siswa/per sesi (bukan satu token untuk semua),
+     dengan masa berlaku dan pencabutan.
+  4. Sertakan audit log "token salah" per siswa + throttle percobaan.
+
+
+1.5 [P0] Waktu ujian dan durasi tidak ditegakkan di server (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - durasi_menit hanya dipakai untuk tampilan (modules/exams.php:16,
+    modules/student.php:275, modules/student_exam.php:29) dan tidak pernah
+    dibandingkan dengan waktu_mulai/now.
+  - startStudentExam (modules/student_exam.php:11) tidak memeriksa
+    waktu_mulai/waktu_selesai.
+  - submitExam (modules/student_exam.php:384) juga tidak memeriksa batas waktu
+    atau sisa durasi.
+  - getStudentAvailableExams hanya menghitung exam_state untuk tampilan
+    (modules/student.php:246-257).
+
+Dampak:
+  - Siswa dapat memanggil startStudentExam sebelum jadwal atau setelah ujian
+    berakhir.
+  - Siswa dapat melanjutkan autosave dan submit setelah waktu habis.
+  - Countdown di browser (Index.html) dapat dimanipulasi/dimatikan.
+  - Nilai ujian tidak dapat dipertanggungjawabkan.
+
+Perbaikan:
+  1. Di startStudentExam, tolak bila now < waktu_mulai atau now > waktu_selesai
+     (kecuali melanjutkan DRAFT yang dimulai sebelum batas, dengan aturan jelas).
+  2. Hitung deadline per peserta:
+       deadline = min(waktu_selesai, waktu_mulai_peserta + durasi_menit)
+     simpan di results (kolom baru deadline_at) saat start.
+  3. autosaveExam dan submitExam menolak bila now > deadline_at + toleransi
+     (mis. 30 detik), lalu paksa submit otomatis dengan jawaban terakhir.
+  4. Tambahkan job/cron ringan (atau pemeriksaan saat request) untuk
+     auto-submit DRAFT yang melewati deadline.
+  5. Tampilkan sisa waktu dari server (server_time) agar countdown browser
+     disinkronkan.
+
+
+1.6 [P0] Baris results dihapus pada jalur baca (risiko kehilangan data) (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - modules/student.php:506-548 find_result_record() menghapus duplikat
+    (DELETE FROM results ... baris 546). Fungsi ini dipanggil dari
+    startStudentExam, autosaveExam, submitExam, dan recordViolation.
+  - modules/results.php:167-170 getExamResults() juga menghapus duplikat saat
+    sekadar membaca rekap.
+  - Tidak ada transaksi/row lock; dua request bersamaan dapat saling
+    menghapus baris yang valid.
+
+Dampak:
+  - Endpoint baca (rekap nilai) dapat menghapus data.
+  - Jika aplikasi memakai user database read-only (disarankan), rekap gagal.
+  - Duplikat bisa berasal dari percobaan berbeda yang kebetulan bernomor sama
+    (lihat 1.7), sehingga data percobaan sah ikut terhapus.
+
+Perbaikan:
+  1. Jangan pernah DELETE pada GET/rekap. Pilih baris terbaik di query
+     (ORDER BY status, nilai DESC) atau gunakan view.
+  2. Tambahkan UNIQUE KEY pada (id_ujian, username_siswa, percobaan_ke) agar
+     duplikat tidak mungkin lahir. Selesaikan duplikat lama lewat skrip
+     migrasi satu kali, dengan pencatatan.
+  3. Gunakan transaksi + SELECT ... FOR UPDATE untuk start/submit.
+  4. Ganti INSERT-tanpa-cek pada autosave/submit dengan
+     INSERT ... ON DUPLICATE KEY UPDATE atau pola upsert yang aman.
+
+
+1.7 [P0/P1] getExamResults salah mengelompokkan saat id_ujian kosong (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - modules/results.php:130-150: kunci pengelompokan hanya
+    $grouped[$userKey]['attempts'][$attemptKey], tidak menyertakan id_ujian.
+  - Saat id_ujian kosong, query mengambil results seluruh ujian
+    (modules/results.php:118-121), sehingga percobaan ke-1 dari ujian A dan
+    ujian B bertabrakan; yang kalah dianggap duplikat dan DIHAPUS.
+
+Dampak:
+  Rekap "semua ujian" dapat menghapus hasil ujian lain dan menampilkan nilai
+  dari ujian yang salah.
+
+Perbaikan:
+  - Kunci menjadi $userKey . '|' . $idUjian . '|' . $attemptKey.
+  - Pisahkan endpoint "rekap per ujian" dan "rekap semua ujian"; yang terakhir
+    sebaiknya mengembalikan daftar per ujian, bukan menggabungkan attempt.
+
+
+1.8 [P0] Manajemen sesi lemah (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/auth.php:102-117 validate_session tidak memeriksa status_aktif.
+  - Token disimpan plaintext dalam kolom TEXT users.token_session (CSV).
+  - Tidak ada masa berlaku / idle timeout / rotasi token.
+  - Token disimpan di localStorage (Index.html: cbt_token, cbt_user) sehingga
+    dapat dicuri lewat XSS.
+  - changePassword (modules/admin.php:270) tidak mencabut token lain.
+  - importUsers mengubah status_aktif tanpa mencabut token.
+  - lib/auth.php:124-132 get_session_status fail-open: bila terjadi exception,
+    mengembalikan valid=true.
+
+Dampak:
+  Akun yang dinonaktifkan tetap bisa memakai token lama. Token yang bocor
+  berlaku selamanya. Satu XSS = pengambilalihan akun permanen.
+
+Perbaikan:
+  1. Tabel sessions terpisah:
+       id, user_id, token_hash (SHA-256), created_at, last_seen_at,
+       expires_at, ip, user_agent, revoked_at.
+     Simpan hanya hash token, bukan token mentah.
+  2. Masa berlaku absolut (mis. 12 jam) + idle timeout (mis. 60 menit);
+     perpanjang last_seen pada heartbeat.
+  3. validate_session: cek revoked_at/expires_at + status_aktif + role.
+  4. Cabut semua sesi saat password berubah, role berubah, atau akun
+     dinonaktifkan; sediakan "keluarkan semua perangkat".
+  5. Pindahkan token ke cookie HttpOnly + Secure + SameSite=Lax (atau
+     Strict), lalu tambahkan CSRF token. Alternatif minimal: pertahankan
+     localStorage tetapi tambahkan CSP ketat dan sanitasi HTML.
+  6. get_session_status: fail-closed (valid=false) saat error.
+  7. Batasi percobaan login per username+IP (lihat 1.13).
+
+
+1.9 [P0] Password siswa disimpan dalam bentuk dapat didekripsi (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/auth.php:58-62 password_fields menyimpan hash + enc_secret(plain).
+  - lib/auth.php:64-71 password_for_display mendekripsi untuk kartu ujian.
+  - modules/admin.php:92 getStudentExamCards mengembalikan password seluruh
+    siswa kepada Admin DAN Guru.
+
+Dampak:
+  Siapa pun yang memperoleh dump database + config/pass.key dapat membaca
+  seluruh password asli. Guru juga dapat melihat password siswa di luar
+  kelasnya. Praktik ini melanggar prinsip "password tidak boleh dapat
+  dipulihkan".
+
+Perbaikan:
+  1. Hapus kolom password_enc dan fitur cetak password. Ganti dengan:
+     - tombol "Reset password" yang menghasilkan password sementara acak,
+       ditampilkan sekali, dan wajib diganti saat login pertama; atau
+     - QR code berisi token aktivasi sekali pakai untuk kartu ujian.
+  2. Jika benar-benar harus menampilkan sesuatu di kartu, gunakan PIN ujian
+     terpisah (bukan password akun), dengan masa berlaku.
+  3. Jalankan migrasi: password_enc = NULL, lalu hapus kolom setelah rilis.
+  4. Ganti password default '123456'/'admin123' dengan password acak + paksa
+     ganti saat login pertama.
+
+
+1.10 [P0] Risiko XSS tersimpan dan tidak ada CSP (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - Index.html memakai innerHTML di 211 tempat; teks soal, nama pengguna,
+    nama ujian, dan pesan AI dirender sebagai HTML.
+  - Contoh: template `${q.teks_soal || ''}` tanpa escape.
+  - Tidak ada header Content-Security-Policy pada index.php.
+  - Token sesi ada di localStorage, sehingga XSS = pencurian sesi permanen.
+  - Guru dapat menyimpan HTML di teks soal/pembahasan; bila akun guru
+    diretas (atau endpoint soal dipanggil siswa karena 1.1), skrip tersimpan
+    dapat menyerang admin.
+
+Perbaikan:
+  1. Escape semua data dinamis dengan escapeHtml() sebelum masuk innerHTML,
+     atau gunakan textContent/DOM API.
+  2. Jika rich text memang diperlukan, sanitasi di server dengan allowlist
+     tag/atribut (mis. HTML Purifier) dan simpan versi tersanitasi.
+  3. Tambahkan CSP ketat (nonce/hash untuk skrip inline), misalnya:
+       Content-Security-Policy:
+         default-src 'self'; img-src 'self' data: https:;
+         style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-...';
+         connect-src 'self'; frame-ancestors 'self';
+     (penyesuaian diperlukan karena Index.html masih inline).
+  4. Tambahkan header Referrer-Policy: no-referrer, Permissions-Policy,
+     dan HSTS bila HTTPS.
+  5. Ganti X-Frame-Options: ALLOWALL (nilai tidak valid) di index.php:67
+     dengan SAMEORIGIN atau frame-ancestors. Bila memang perlu di-embed,
+     batasi origin secara eksplisit.
+
+
+1.11 [P1] Pembatasan browser dapat diakali dari klien (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - Index.html memanggil login(username, password, navigator.userAgent).
+  - lib/auth.php:143-171 memakai argumen $userAgent dari klien, bukan
+    $_SERVER['HTTP_USER_AGENT'].
+
+Dampak:
+  Siswa dapat memanggil login dengan User-Agent palsu ("SEB") sehingga
+  allowlist browser tidak berfungsi.
+
+Perbaikan:
+  - Gunakan $_SERVER['HTTP_USER_AGENT'] di server; abaikan argumen klien.
+  - Sadari bahwa UA tetap dapat dipalsukan. Untuk kontrol nyata, gunakan
+    Safe Exam Browser dengan konfigurasi/kunci, sertifikat perangkat, atau
+    kombinasi IP + device fingerprint + token perangkat.
+  - Catat UA server-side pada log login dan pelanggaran.
+
+
+1.12 [P1] Validasi input ujian/soal kurang (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - modules/exams.php:117-286 saveExam tidak memvalidasi:
+      nama_ujian kosong, waktu_selesai <= waktu_mulai, durasi wajar,
+      panjang token, jumlah_soal_tampil > jumlah soal, id_guru ada,
+      kolaborator ada, atau benturan jadwal.
+  - modules/sessions.php:35 saveSession tidak mencegah nama sesi duplikat.
+  - modules/questions.php:81 saveQuestion tidak memastikan kunci_jawaban
+    termasuk opsi yang terisi; nilai 'Z' tetap diterima.
+  - modules/questions.php:358 saveBulkQuestions menerima teks_soal kosong
+    (menghasilkan soal hampa) dan tidak memvalidasi kunci.
+  - modules/questions.php:292 importQuestions menelan baris gagal tanpa
+    laporan rinci dan tanpa transaksi (impor bisa setengah jadi).
+  - modules/exams.php:291 deleteExam tidak memakai transaksi; kegagalan di
+    tengah meninggalkan data yatim.
+  - modules/admin.php:195 saveUser tidak memvalidasi format username dan
+    dapat mengosongkan nama; modules/admin.php:325 deleteUser hanya melindungi
+    username "admin", bukan "admin aktif terakhir".
+
+Dampak:
+  Data tidak konsisten, ujian tidak bisa dimulai, soal tanpa jawaban benar,
+  dan potensi lockout admin.
+
+Perbaikan:
+  1. Buat validator input kecil (required, length, enum, datetime order).
+  2. Aturan bisnis:
+       - minimal 1 admin aktif; tidak boleh menonaktifkan/menghapus diri
+         sendiri sebagai admin terakhir;
+       - waktu_selesai > waktu_mulai;
+       - kunci_jawaban harus salah satu opsi non-kosong;
+       - jumlah_soal_tampil 0..jumlah soal;
+       - token 4-20 karakter alfanumerik (opsional);
+       - nama sesi unik (tambahkan UNIQUE index).
+  3. Bungkus operasi multi-tabel dengan transaksi + rollback.
+  4. Kembalikan laporan per baris untuk impor (berhasil/gagal + alasan).
+
+
+1.13 [P1] Login tanpa rate limit dan pesan membocorkan username (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/auth.php:153-158 membedakan "Username tidak ditemukan" dan
+    "Password salah".
+  - Tidak ada penghitung percobaan/IP, tidak ada log login gagal.
+
+Dampak:
+  Brute force password, enumerasi akun, dan tidak ada jejak audit.
+
+Perbaikan:
+  - Pesan generik: "Username atau password salah."
+  - Hitung kegagalan per (username, IP) di tabel login_attempts atau cache;
+    kunci sementara setelah 5-10 kegagalan.
+  - Selalu jalankan password_verify dengan dummy hash saat user tidak ada agar
+    waktu respons seragam.
+  - Log login gagal (username, IP, UA, waktu) dan tampilkan di audit admin.
+  - Wajibkan HTTPS dan cookie Secure di produksi.
+
+
+1.14 [P1] Detail exception bocor ke klien (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - api.php:130-135 mengembalikan $e->getMessage().
+  - upload.php:65, setup.php:45, dan banyak modul juga mengembalikan pesan
+    exception mentah (termasuk pesan MySQL).
+
+Dampak:
+  Penyerang melihat nama host/user database, struktur tabel, path server, dan
+  detail internal lain.
+
+Perbaikan:
+  - Kembalikan pesan generik + kode/ID korelasi (request_id).
+  - Simpan detail di error_log bersama request_id.
+  - Di mode produksi, matikan display_errors (sudah) dan pastikan error_log
+    tidak dapat diakses publik.
+
+
+1.15 [P1] Pembaruan aplikasi: rantai pasok dan eksekusi di request web (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/update.php:337 update_apply mengunduh arsip GitHub lalu mengekstrak
+    dengan PharData (baris 383) dan menyalin berkas ke root aplikasi.
+  - Tidak ada verifikasi tanda tangan/checksum selain hash arsip yang dipakai
+    sebagai versi.
+  - Seluruh proses berjalan dalam request HTTP (timeout 60 detik) dan menulis
+    ke direktori aplikasi.
+
+Dampak:
+  - Jika repo/akun GitHub dikompromikan, kode berbahaya otomatis terpasang.
+  - Proses panjang dapat timeout di tengah dan meninggalkan aplikasi setengah
+    diperbarui (meski ada rollback untuk kegagalan lint).
+  - Web server butuh izin tulis ke seluruh root aplikasi.
+
+Perbaikan:
+  - Verifikasi rilis dengan tanda tangan (minisign/GPG) atau checksum yang
+    dipublikasikan terpisah; pin ke tag rilis, bukan branch main.
+  - Jalankan pembaruan lewat CLI (php tools/update.php) atau job queue,
+    bukan request web.
+  - Aktifkan maintenance mode + backup database sebelum update.
+  - Batasi berkas yang boleh ditimpa (allowlist ketat), tolak symlink dan
+    path traversal saat ekstrak.
+  - Simpan backup di luar document root.
+
+
+1.16 [P1] db() membuat database pada setiap koneksi (least privilege) (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/db.php:28 CREATE DATABASE IF NOT EXISTS dijalankan setiap kali PDO
+    baru dibuat, termasuk saat runtime normal.
+
+Dampak:
+  - User database harus punya izin CREATE (berlebihan).
+  - Satu round-trip + potensi error pada setiap request.
+  - Jika user hanya SELECT/INSERT/UPDATE/DELETE (sesuai README), koneksi
+    runtime bisa gagal.
+
+Perbaikan:
+  - Pindahkan CREATE DATABASE ke setup/CLI migrasi.
+  - Koneksi runtime langsung ke dbname; tangkap error 1049 untuk mengarahkan
+    ke wizard.
+  - Gunakan user database terpisah: app_rw (DML) dan app_migrator (DDL).
+
+
+1.17 [P1] Kunci enkripsi gagal secara diam-diam (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/crypto.php:35-39 membuat kunci baru dan menulis config/pass.key,
+    tetapi kegagalan penulisan diabaikan (@file_put_contents).
+  - Bila file tidak dapat ditulis, setiap request memakai kunci acak baru,
+    sehingga data lama tidak bisa didekripsi.
+
+Dampak:
+  Kehilangan data senyap (password_enc tidak terbaca) dan perilaku tidak
+  deterministik.
+
+Perbaikan:
+  - Fail-fast: jika kunci tidak dapat disimpan/dibaca, hentikan operasi
+    enkripsi dan tampilkan error yang jelas.
+  - Simpan kunci di luar document root (atau env CBT_PASS_KEY) dengan 0600.
+  - Tambahkan versioning kunci (key_id) untuk rotasi.
+  - Idealnya, hapus kebutuhan enkripsi password (lihat 1.9).
+
+
+1.18 [P2] SVG diterima sebagai unggahan (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - config/config.php:45 mengizinkan image/svg+xml.
+  - modules/media.php:131 melewati getimagesize untuk SVG.
+  - media.php sudah mengirim CSP untuk SVG, tetapi SVG tetap dapat berisi
+    skrip/iframe bila dirender inline di tempat lain.
+
+Dampak:
+  Stored XSS bila SVG ditampilkan inline atau dibuka langsung tanpa CSP yang
+  konsisten.
+
+Perbaikan:
+  - Hapus SVG dari allowlist, atau sanitasi dengan allowlist elemen/atribut.
+  - Selalu sajikan SVG sebagai attachment atau dengan CSP sandbox.
+  - Pertimbangkan konversi SVG ke PNG saat unggah.
+
+
+1.19 [P2] Aksi state-changing dapat dipanggil via GET (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - api.php menerima args dari $_GET dan tidak membatasi metode.
+  - Action seperti deleteUser/deleteExam dapat dipicu dengan
+    api.php?action=...&args=[...] bila token diketahui.
+
+Dampak:
+  Token di URL bocor ke access log/referrer, dan permukaan CSRF melebar
+  (terutama bila nanti beralih ke cookie).
+
+Perbaikan:
+  - Hanya izinkan POST untuk action non-baca.
+  - Tolak token di query string; ambil dari header Authorization atau cookie.
+  - Tambahkan CSRF token bila memakai cookie sesi.
+  - Tambahkan SameSite=Lax/Strict pada cookie.
+
+
+1.20 [P2] Beberapa bug kecil lain (SELESAI)
+--------------------------------------------------------------------------------
+  - modules/admin.php:305,449 dan lib/auth.php:96 memakai
+    LOWER(TRIM(username)) = ? sehingga unique index tidak terpakai.
+  - modules/admin.php:195 saveUser mengganti username tanpa memperbarui
+    exams.id_guru/kolaborator dan results.username_siswa; riwayat menjadi
+    yatim. Jadikan username immutable atau lakukan cascade/alias.
+  - modules/admin.php:478 importUsers selalu mereset password user yang sudah
+    ada, dan tidak mencabut sesi saat status menjadi nonaktif.
+  - modules/admin.php:325 deleteUser tidak menghapus/menganonimkan results
+    dan logs; data pribadi tertinggal.
+  - modules/student_exam.php:306 autosaveExam menerima id_ujian sembarang dan
+    percobaan_ke dari klien; dapat membuat baris DRAFT untuk ujian yang tidak
+    diikuti. Validasi ujian, attempt aktif, dan batas ukuran payload.
+  - modules/student_exam.php:352 recordViolation mempercayai angka dari klien;
+    siswa dapat mengirim 0 atau angka palsu. Hitung pelanggaran di server
+    (monotonic increment), lalu terapkan tindakan otomatis di server.
+  - modules/student_exam.php:352-374 tidak pernah menerapkan auto_submit /
+    auto_blokir; keputusan sepenuhnya di klien (blockStudentExam dipanggil
+    klien). Pindahkan ke server.
+  - modules/student_exam.php:384 submitExam tidak membatasi ukuran answers;
+    payload besar dapat membebani memori/DB.
+  - modules/student.php:246-257 DRAFT yang kedaluwarsa tidak pernah
+    di-auto-submit; baris DRAFT tertinggal selamanya dan mengganggu
+    perhitungan percobaan.
+  - modules/results.php:360 getStudentViolations memuat SEMUA log user lalu
+    memfilter dengan str_contains di PHP; lambat dan bisa salah cocok.
+    Simpan exam_id terstruktur di tabel pelanggaran.
+  - modules/media.php:189 media_purge_orphans dan media_delete_if_unused
+    memakai LIKE '%id%' sehingga dapat salah mencocokkan; gunakan
+    media_id_from_url() pada nilai yang tepat.
+  - favicon.php:111-126 menerima path relatif dengan pola yang mengizinkan
+    "../"; batasi ke folder aset dan realpath di dalam APP_ROOT.
+  - lib/auth.php:64-71 password_for_display mengembalikan '' bila kunci hilang;
+    UI perlu membedakan "tidak tersedia" dari "password kosong".
+  - modules/student.php:12 summarize_student_attempts menghitung TERBLOKIR
+    sebagai percobaan terpakai; pastikan ini sesuai kebijakan sekolah.
+  - Versi PHP minimum di README 8.0, tetapi kode memakai array_is_list()
+    (PHP 8.1+) di modules/gemini.php. Naikkan syarat minimum ke 8.1 atau
+    sediakan polyfill.
+  - Cek konsistensi timezone: DATETIME disimpan sebagai wall clock; pastikan
+    semua input datetime-local dari klien memakai zona aplikasi, bukan zona
+    perangkat siswa.
+
+
+2. OPTIMALISASI PERFORMA
+--------------------------------------------------------------------------------
+
+2.1 [P0] Hentikan DDL dan seed pada setiap request
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/db.php:83-131 ensure_schema menjalankan seluruh database/schema.sql
+    (9 CREATE TABLE), SHOW COLUMNS, dan seed_defaults().
+  - seed_defaults() (lib/db.php:134) menjalankan 1 COUNT sesi + 1 COUNT admin
+    + 14 COUNT settings, lalu mungkin INSERT.
+  - ensure_schema dipanggil di api.php:114, index.php:11, upload.php:28,
+    dan media.php:26 (setiap gambar!).
+
+Dampak:
+  Puluhan query meta per request; DDL memicu metadata lock dan tidak boleh
+  dijalankan saat ujian serentak. Satu halaman dengan 20 gambar = 20 kali
+  rangkaian CREATE TABLE + SHOW COLUMNS.
+
+Perbaikan:
+  1. Tambahkan tabel schema_migrations (version, applied_at).
+  2. Jalankan migrasi hanya dari CLI/setup, bukan runtime.
+  3. Di runtime cukup satu query ringan:
+       SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1
+     lalu bandingkan dengan APP_SCHEMA_VERSION di config.
+  4. Hapus ensure_schema() dari media.php; media hanya butuh SELECT.
+  5. seed_defaults() pindahkan ke migrasi awal.
+  6. Jika tetap ingin aman untuk instalasi baru, gunakan file penanda
+     config/installed.json + health check, bukan DDL tiap request.
+
+
+2.2 [P1] Cache pengaturan per request (dan antar request)
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/settings.php:31 settings_map() selalu SELECT seluruh tabel settings.
+  - Dipanggil dari apply_app_timezone() saat bootstrap, violation_policy(),
+    get_max_student_sessions(), app_timezone_label(), save_settings(),
+    media_delete_if_unused(), update_*(), dan lain-lain.
+
+Dampak:
+  Beberapa SELECT identik per request; pada ujian serentak menjadi beban
+  yang tidak perlu.
+
+Perbaikan:
+  - static $cache per request di settings_map(); invalidasi saat saveSettings.
+  - Untuk antar request, cache di APCu/file dengan TTL 60 detik dan
+    invalidasi eksplisit setelah save.
+  - Jangan panggil settings_map() berulang di dalam loop (mis.
+    media_delete_if_unused).
+  - Simpan hasil timezone di konstanta setelah dihitung sekali.
+
+
+2.3 [P1] Hilangkan LOWER()/TRIM() pada kolom yang di-index
+--------------------------------------------------------------------------------
+Bukti (contoh):
+  - lib/auth.php:96          WHERE LOWER(TRIM(username)) = ?
+  - lib/auth.php:102-117     validate_session -> find_user
+  - modules/results.php:304,340,360,435
+  - modules/student.php:110,353,515
+  - modules/student_exam.php:21,165,435,490
+  - modules/questions.php:270 (TRIM(id_teks))
+
+Dampak:
+  MySQL tidak dapat memakai index biasa untuk ekspresi LOWER(TRIM(...)),
+  sehingga terjadi full table scan. Pada tabel results/logs yang besar,
+  rekap dan login menjadi lambat.
+
+Perbaikan:
+  1. Normalisasi saat menulis:
+     - username selalu lowercase dan tanpa spasi tepi;
+     - id_ujian/username_siswa disimpan apa adanya tanpa spasi.
+  2. Ubah query menjadi WHERE username = ? / id_ujian = ? /
+     username_siswa = ?. Collation utf8mb4_unicode_ci sudah case-insensitive,
+     jadi LOWER() tidak diperlukan; VARCHAR juga mengabaikan spasi akhir pada
+     perbandingan.
+  3. Jika data lama tidak konsisten, tambahkan generated column:
+       username_norm VARCHAR(100) AS (LOWER(TRIM(username))) STORED,
+       UNIQUE KEY uq_username_norm (username_norm)
+     MySQL 8 mendukung functional key part/expression index; lihat
+     dokumentasi MySQL "CREATE INDEX" bagian functional key parts.
+  4. Untuk results, buat kolom exam_id dan student_username yang sudah
+     dinormalisasi + index komposit.
+
+Index yang disarankan:
+
+  ALTER TABLE results
+    ADD UNIQUE KEY uq_result_attempt (id_ujian, username_siswa, percobaan_ke),
+    ADD KEY idx_results_exam_status (id_ujian, status),
+    ADD KEY idx_results_student (username_siswa, id_ujian);
+
+  ALTER TABLE questions
+    ADD KEY idx_questions_exam_order (id_ujian, urutan);
+
+  ALTER TABLE exams
+    ADD KEY idx_exams_created (created_at),
+    ADD KEY idx_exams_guru_created (id_guru, created_at);
+
+  ALTER TABLE logs
+    ADD KEY idx_logs_time (timestamp),
+    ADD KEY idx_logs_type_time (jenis_kejadian, timestamp);
+
+  ALTER TABLE media
+    ADD UNIQUE KEY uq_media_hash (hash);
+
+  ALTER TABLE users
+    ADD KEY idx_users_role_status (role, status_aktif);
+
+Catatan: unique key results harus didahului pembersihan duplikat (lihat 1.6).
+
+
+2.4 [P1] Kurangi query berulang dan pemindaian tabel penuh
+--------------------------------------------------------------------------------
+Temuan:
+  - validate_session() memanggil find_user(); current_role() memanggil
+    find_user() lagi. Satu action bisa 2-3 kali SELECT users yang sama.
+  - modules/admin.php:92 getAdminData memuat seluruh users, lalu
+    catalog_lists() (lib/helpers.php) memuat seluruh users lagi.
+  - modules/admin.php:367 getStudentLoginSessions memuat SELURUH tabel logs
+    untuk mencari login terakhir per siswa, lalu memindainya di PHP.
+  - modules/admin.php:17,108,212,378 memuat semua user tanpa pagination.
+  - modules/results.php:86 getExamResults memuat semua results + semua users
+    + semua soal, dan mengembalikan detail_jawaban (LONGTEXT) untuk setiap
+    siswa.
+  - modules/student.php:93 getStudentAvailableExams memuat semua results
+    siswa dan semua exams, lalu menghitung di PHP.
+  - modules/admin.php:212 saveUser memindai semua users untuk cek username.
+
+Perbaikan:
+  1. Cache user per request:
+       function current_user(string $username, bool $fresh=false): ?array
+     dan pakai di validate_session/current_role.
+  2. Ganti loop users + catalog_lists dengan beberapa query agregat:
+       SELECT DISTINCT kelas FROM users WHERE ...
+       SELECT DISTINCT tingkat FROM users WHERE ...
+       SELECT COUNT(*) ... GROUP BY role,status_aktif
+  3. Login terakhir:
+       SELECT username, MAX(timestamp) AS last_login
+       FROM logs WHERE jenis_kejadian = 'Login'
+       GROUP BY username;
+     (dengan index jenis_kejadian+timestamp). Lebih baik lagi: tabel
+     login_sessions terpisah.
+  4. Pagination server-side untuk pengguna, nilai, dan log. Default 25-50
+     baris; endpoint terpisah untuk detail jawaban.
+  5. getExamResults: jangan kirim detail_jawaban pada daftar; kirim saat
+     pengguna membuka detail siswa.
+  6. Gunakan JOIN ke users sekali, bukan map di PHP.
+  7. Dashboard admin: cache statistik dengan TTL 30-60 detik.
+
+
+2.5 [P1] Beban media (BLOB di MySQL + DDL per gambar)
+--------------------------------------------------------------------------------
+Bukti:
+  - database/schema.sql:136 data LONGBLOB.
+  - modules/media.php:36-60 menyimpan seluruh byte di memori, lalu
+    mengirimnya ke PDO::PARAM_LOB.
+  - media.php:26 ensure_schema() untuk setiap gambar.
+  - media.php:78 menyalin seluruh BLOB ke string sebelum dikirim.
+  - Tidak ada dukungan Range; Accept-Ranges: none.
+
+Dampak:
+  Memori PHP membengkak (8 MB x jumlah request paralel), database cepat
+  besar, backup lambat, dan setiap gambar memicu DDL.
+
+Perbaikan:
+  1. Simpan berkas di disk di luar webroot (storage/media/<2 level shard>/)
+     dengan nama acak; tabel media hanya metadata. Sajikan lewat endpoint
+     yang sama dengan readfile()/streaming.
+  2. Jika tetap di MySQL, hapus ensure_schema() dari media.php, gunakan
+     prepared statement SELECT data, dan kirim dengan streaming/chunk.
+  3. Kompres gambar saat unggah (GD/Imagick): maksimal 1600 px, WebP/JPEG
+     kualitas 80, sehingga ukuran turun drastis.
+  4. Tambahkan dukungan Range/Last-Modified bila diperlukan.
+  5. Jalankan pembersihan orphan berkala (cron), bukan saat request.
+  6. Pertimbangkan object storage (S3/MinIO) untuk instalasi besar.
+
+
+2.6 [P1] Frontend 656 KB dalam satu Index.html
+--------------------------------------------------------------------------------
+Bukti:
+  - Index.html berukuran 656 KB, berisi CSS/JS inline dan 301 fungsi.
+  - index.php membaca seluruh file setiap request dan menyisipkan favicon +
+    shim.
+  - Tidak ada header cache untuk HTML; .htaccess hanya mengatur cache aset
+    statis dan tidak mengaktifkan kompresi.
+
+Dampak:
+  Unduhan awal besar, parsing/compile JS memblokir UI, dan biaya bandwidth
+  berulang untuk setiap kunjungan.
+
+Perbaikan:
+  1. Pisahkan CSS/JS ke assets/ dan minify (esbuild/terser/PostCSS).
+  2. Aktifkan kompresi:
+       mod_deflate (Apache) atau gzip/brotli di Nginx untuk html/css/js/json.
+  3. Tambahkan ETag/Last-Modified untuk index.php berdasarkan mtime
+     Index.html + versi; kembalikan 304 bila tidak berubah.
+  4. Cache asset dengan hash nama file (cache busting), max-age 1 tahun.
+  5. Code-split per peran/halaman: muat modul admin hanya saat dibutuhkan.
+  6. Lazy-load Lucide icons/chart library dan gambar soal.
+  7. Target awal: HTML+JS < 200 KB terkompresi.
+  8. Tambahkan loading skeleton agar persepsi cepat.
+
+
+2.7 [P2] Query dan payload autosave
+--------------------------------------------------------------------------------
+Bukti:
+  - modules/student_exam.php:306 autosaveExam menulis seluruh JSON jawaban
+    pada setiap autosave/perubahan.
+  - Index.html menyimpan payload juga di localStorage.
+
+Dampak:
+  Write amplification pada ujian 100+ siswa x 50 soal x setiap perubahan.
+
+Perbaikan:
+  - Debounce autosave 2-5 detik dan kirim hanya jawaban yang berubah
+    (patch), bukan seluruh map.
+  - Server menyimpan per jawaban di tabel answers
+    (result_id, question_id, answer, updated_at) dengan upsert.
+  - Batasi frekuensi per siswa (mis. maksimal 1 write/2 detik).
+  - Simpan jawaban final di results.detail_jawaban saat submit.
+
+
+2.8 [P2] Cache status pembaruan GitHub
+--------------------------------------------------------------------------------
+Bukti:
+  - lib/update.php:577-600 getApplicationVersion memanggil GitHub API dan
+    raw.githubusercontent.com setiap kali dipanggil.
+  - Kuota GitHub API anonim 60/jam per IP.
+
+Dampak:
+  Halaman Pengaturan bisa gagal karena rate limit, dan respons lambat.
+
+Perbaikan:
+  - Cache hasil (file storage/cache/update-check.json) selama 10-15 menit.
+  - Tampilkan tombol "Periksa pembaruan" manual untuk memaksa refresh.
+  - Bedakan dengan jelas status 403/429 vs 404 (sudah ada sebagian).
+
+
+2.9 [P2] Tuning runtime PHP/MySQL
+--------------------------------------------------------------------------------
+Saran produksi:
+  PHP-FPM/OPcache:
+    opcache.enable=1
+    opcache.validate_timestamps=0 (setelah deploy stabil)
+    opcache.memory_consumption=128-256
+    opcache.max_accelerated_files=10000
+    realpath_cache_size=4096K
+    memory_limit=256M (media 8 MB + GD)
+  MySQL:
+    innodb_buffer_pool_size = 50-70% RAM
+    innodb_flush_log_at_trx_commit = 2 (jika boleh sedikit risiko)
+    slow_query_log=ON, long_query_time=1
+    innodb_file_per_table=ON
+  Web server:
+    KeepAlive ON, gzip/brotli, HTTP/2 (HTTPS)
+    Batasi upload 10 MB, timeout PHP 120 detik untuk AI saja.
+  Pisahkan endpoint AI/update ke proses/CLI agar tidak menahan worker PHP-FPM.
+
+2.10 [P2] Retensi log dan arsip
+--------------------------------------------------------------------------------
+  - logs tumbuh tanpa batas. Tambahkan retensi (mis. 90/180 hari) dan
+    partisi/arsip.
+  - Simpan log pelanggaran terstruktur (exam_id, user, jenis, waktu, IP, UA)
+    agar rekap tidak memindai teks.
+  - Backup DB harian + backup media, uji restore berkala.
+
+
+3. PERBAIKAN ARSITEKTUR YANG DISARANKAN
+--------------------------------------------------------------------------------
+
+3.1 Migrasi skema berversi
+  - Tabel schema_migrations + folder database/migrations/000x_*.sql.
+  - Perintah CLI: php tools/migrate.php (up/status/rollback).
+  - Hapus DDL dari request path.
+
+3.2 Lapisan layanan + RBAC
+  - api.php hanya: parse request -> auth -> authorize -> panggil service.
+  - services/ExamService, QuestionService, ResultService, UserService.
+  - Controller tidak menyentuh PDO langsung; semua transaksi di service.
+  - Satu exception handler: ValidationException (422), Forbidden (403),
+    NotFound (404), ServerError (500) dengan pesan aman.
+
+3.3 Sesi dan autentikasi modern
+  - Tabel sessions (hash token, expiry, IP/UA, revoked_at).
+  - Cookie HttpOnly/Secure/SameSite + CSRF token.
+  - 2FA opsional untuk Admin/Guru (TOTP).
+  - Logout semua perangkat; daftar perangkat aktif.
+  - Password policy: min 8-12 karakter, cek password umum, paksa ganti
+    password awal.
+  - Gunakan password_needs_rehash() untuk menaikkan cost hash lama:
+      if (password_verify($plain, $hash) &&
+          password_needs_rehash($hash, PASSWORD_DEFAULT)) {
+          // simpan hash baru
+      }
+    (sesuai contoh resmi PHP Manual password_needs_rehash).
+
+3.4 Integritas ujian
+  - deadline_at per peserta, auto-submit server-side.
+  - Token per siswa, sekali pakai / berlaku pada jendela waktu.
+  - Idempotency key untuk submit (cegah double submit saat retry).
+  - Simpan audit trail perubahan jawaban (append-only) untuk sengketa.
+  - Nomor peserta & device binding opsional.
+
+3.5 Observability
+  - request_id di setiap respons/log.
+  - Log terstruktur (JSON) untuk error, login, submit, pelanggaran.
+  - Metrik: durasi request p50/p95, jumlah query, error rate, jumlah peserta
+    aktif, ukuran DB.
+  - Health check /health.php (DB, disk, versi skema) tanpa membocorkan rahasia.
+  - Alert bila error rate atau slow query naik saat ujian.
+
+3.6 Pengujian
+  - Unit test untuk scoring, attempt, deadline, RBAC (PHPUnit).
+  - Integration test API dengan DB sementara (docker mysql).
+  - Negative security test: siswa memanggil semua action admin/guru.
+  - Load test (k6/Locust) 100-500 siswa serentak untuk start/autosave/submit.
+  - Static analysis: PHPStan level 6+, ESLint, HTML validator.
+  - CI GitHub Actions: lint, test, build asset, cek migrasi.
+
+3.7 Deployment
+  - Docker Compose (php-fpm, nginx, mysql) untuk reproducibility.
+  - Pisahkan config rahasia via env/secret, bukan file di webroot.
+  - Maintenance mode saat update.
+  - Backup otomatis sebelum migrasi/update.
+  - Jangan biarkan folder storage/ dan config/ dapat diakses publik
+    (Apache .htaccess sudah; Nginx perlu aturan location terpisah).
+
+
+4. FITUR TAMBAHAN YANG LAYAK DIPERTIMBANGKAN
+--------------------------------------------------------------------------------
+
+4.1 Mesin ujian
+  - Tipe soal: esai, jawaban singkat, benar/salah, multi-jawaban,
+    menjodohkan, isian rumpang, upload berkas.
+  - Penilaian parsial, bobot per opsi, nilai negatif, rubrik esai.
+  - Bank soal lintas ujian + taksonomi (mapel, kelas, topik, level Bloom,
+    kesulitan, sumber).
+  - Blueprint ujian: komposisi soal per topik/level, auto-pick.
+  - Clone/duplikat ujian, arsip ujian, template ujian.
+  - Penjadwalan per kelas/sesi/kelompok + pengecualian siswa.
+  - Token per siswa, token sekali pakai, token via QR.
+  - Resume lintas perangkat, konflik autosave, riwayat versi jawaban.
+  - Mode latihan (tanpa token, tanpa batas) dan mode ujian resmi.
+  - PWA/offline queue untuk koneksi tidak stabil, sinkronisasi saat online.
+  - Dukungan Safe Exam Browser (konfigurasi .seb) dan kiosk mode.
+  - Aksesibilitas: ukuran font, kontras tinggi, keyboard navigation,
+    screen reader, waktu tambahan untuk siswa berkebutuhan khusus.
+
+4.2 Pengawasan (proctoring)
+  - Deteksi server-side: tab switch, fullscreen exit, copy/paste, devtools,
+    koneksi terputus, IP berubah, multi-device.
+  - Dashboard pengawas real-time: status siswa, sisa waktu, pelanggaran,
+    tombol pause/block/reset.
+  - Snapshot webcam berkala (dengan persetujuan & kebijakan privasi).
+  - Rekaman layar opsional; watermark dinamis (sudah ada) + watermark PDF.
+  - IP allowlist / geofence sekolah; device fingerprint.
+  - Audit pelanggaran dengan bukti (timestamp, UA, IP, exam_id).
+
+4.3 Nilai dan analitik
+  - Analisis butir soal: tingkat kesulitan (p), daya beda (D), analisis
+    pengecoh, korelasi butir-total, Cronbach alpha.
+  - Rekap per kelas/sekolah/mapel/guru, tren antar ujian.
+  - Export Excel/CSV/PDF (nilai, kartu, berita acara, daftar hadir).
+  - Remedial otomatis untuk siswa di bawah KKM; bank soal remedial.
+  - Sertifikat/transkrip dengan QR verifikasi.
+  - Notifikasi email/WhatsApp ke siswa/orang tua (opsional).
+  - Gradebook dan integrasi dengan sistem akademik (SIAKAD) via API.
+
+4.4 Administrasi
+  - Impor/ekspor pengguna & soal via Excel/CSV dengan preview dan validasi
+    per baris, template unduhan.
+  - Grup/kelas/angkatan, wali kelas, penugasan guru ke mapel/kelas.
+  - Peran granular: Admin, Operator, Kepala Sekolah, Guru, Pengawas, Siswa.
+  - Reset password massal + cetak kartu dengan QR aktivasi.
+  - Daftar perangkat/sesi aktif, logout massal.
+  - Audit log viewer dengan filter (user, aksi, tanggal), export.
+  - Backup/restore dari UI (dengan enkripsi dan unduhan aman).
+  - Multi-sekolah (tenant) untuk dinas/yayasan; branding per sekolah.
+  - SSO Google/Microsoft untuk guru/admin; 2FA TOTP.
+  - Pengaturan per-mapel/per-guru (kebijakan pelanggaran fleksibel) sambil
+    tetap punya default global.
+  - Mode maintenance dan health check.
+
+4.5 Konten
+  - Editor rich text aman (sanitasi server) + dukungan rumus matematika
+    (KaTeX/MathJax) dan tabel.
+  - Audio/video untuk soal listening; transkrip.
+  - Kompresi gambar otomatis + alt text (aksesibilitas).
+  - Deteksi soal duplikat (kemiripan teks) dan validasi kunci jawaban.
+  - Pembahasan kaya (gambar/rumus) dan pembahasan per opsi.
+  - Impor dari Word/Google Docs (opsional).
+
+4.6 AI
+  - Gunakan responseSchema/structured output Gemini agar JSON valid
+    (kurangi parsing gagal).
+  - Kirim API key lewat header (x-goog-api-key), bukan query string, agar
+    tidak bocor di log/proxy.
+  - Fallback model otomatis saat 429/5xx, retry dengan backoff, timeout
+    terpisah.
+  - Batas jumlah soal per request di server (client chunk sudah ada).
+  - Riwayat generate + biaya/token usage + tombol approve sebelum masuk
+    bank soal.
+  - Moderasi konten dan validasi kunci jawaban otomatis.
+  - Abstraksi provider (Gemini/OpenAI/Claude/lokal) dengan antarmuka sama.
+  - Prompt template per mapel/level, simpan versi prompt.
+
+4.7 UX/UI
+  - Dark mode, tema sekolah, layout responsif untuk tablet.
+  - Indikator autosave jelas ("tersimpan 2 detik lalu"), status koneksi.
+  - Navigasi soal dengan grid, tanda ragu, filter belum dijawab.
+  - Konfirmasi submit yang lebih informatif (jumlah kosong, sisa waktu).
+  - Halaman error yang ramah + tombol coba lagi.
+  - Onboarding singkat untuk guru dan siswa.
+  - Pencarian global (siswa, ujian, soal) untuk admin.
+  - i18n (ID/EN) bila diperlukan.
+
+4.8 Operasional
+  - CLI tools: migrate, backup, purge-media, create-admin, reset-password,
+    update (tanpa web).
+  - Docker/compose + contoh Nginx.
+  - Monitoring uptime + alert.
+  - Feature flags untuk merilis fitur bertahap.
+  - Dokumentasi API (OpenAPI) dan changelog otomatis.
+
+
+5. ROADMAP PRIORITAS (SARAN)
+--------------------------------------------------------------------------------
+
+Sprint 1 - Keamanan & integritas (1-2 minggu)
+  [ ] RBAC terpusat + terapkan ke semua action (1.1)
+  [ ] Pisahkan settings publik/rahasia (1.2)
+  [ ] Kunci setup.php (1.3)
+  [ ] Sembunyikan token ujian (1.4)
+  [ ] Deadline server-side + auto-submit (1.5)
+  [ ] Hentikan DELETE pada jalur baca + unique result (1.6, 1.7)
+  [ ] Sesi: expiry + hash token + cabut saat password/role berubah (1.8)
+  [ ] Hapus password_enc / ganti reset password (1.9)
+  [ ] Escape HTML + CSP dasar (1.10)
+  [ ] Rate limit login + pesan generik (1.13)
+  [ ] Perbaiki X-Frame-Options (1.10)
+
+Sprint 2 - Performa & stabilitas (1-2 minggu)
+  [ ] Migrasi berversi, hapus DDL runtime (2.1)
+  [ ] Cache settings (2.2)
+  [ ] Normalisasi + index (2.3)
+  [ ] Hilangkan N+1 / full scan (2.4)
+  [ ] Optimasi media (2.5)
+  [ ] Pecah + kompres frontend (2.6)
+  [ ] Transaksi untuk operasi multi-tabel (1.12)
+  [ ] Validasi input ujian/soal (1.12)
+  [ ] Perbaiki bug kecil (1.20)
+
+Sprint 3 - Fitur & kualitas (2-4 minggu)
+  [ ] Analisis butir soal + export nilai (4.3)
+  [ ] Bank soal lintas ujian + blueprint (4.1)
+  [ ] Tipe soal esai + penilaian manual (4.1)
+  [ ] Dashboard pengawas real-time (4.2)
+  [ ] Impor/ekspor Excel dengan validasi (4.4)
+  [ ] PWA/offline + aksesibilitas (4.1, 4.7)
+  [ ] CLI tools + Docker + monitoring (4.8)
+  [ ] Uji beban 100-500 siswa (3.6)
+
+
+6. CHECKLIST VERIFIKASI SETELAH PERBAIKAN
+--------------------------------------------------------------------------------
+  [ ] Login sebagai siswa, panggil semua action admin/guru via curl -> 403.
+  [ ] GET api.php?action=getSettings -> tidak ada gemini_api_key.
+  [ ] POST setup.php?action=install saat sudah terpasang -> 403.
+  [ ] Respons startStudentExam/getStudentAvailableExams -> tanpa token_ujian.
+  [ ] start sebelum jadwal / setelah selesai -> ditolak.
+  [ ] autosave/submit setelah deadline -> ditolak atau auto-submit.
+  [ ] Submit ganda bersamaan -> hanya satu baris SUBMITTED (unique key).
+  [ ] Rekap semua ujian tidak menghapus/menggabungkan hasil antar ujian.
+  [ ] Nonaktifkan akun -> token lama langsung tidak valid.
+  [ ] Ubah password -> sesi lain logout.
+  [ ] Simpan soal berisi <script> -> tersanitasi/ter-escape, tidak dieksekusi.
+  [ ] Upload SVG/PNG -> hanya tipe aman yang disajikan dengan header benar.
+  [ ] Index dipakai: EXPLAIN menunjukkan ref/range, bukan ALL, untuk
+      find_user, getExamResults, getStudentAvailableExams, logs.
+  [ ] Satu request normal tidak menjalankan CREATE TABLE/SHOW COLUMNS.
+  [ ] media.php tidak memanggil ensure_schema.
+  [ ] Halaman awal terkompresi dan mengembalikan 304 saat tidak berubah.
+  [ ] Uji beban: p95 start/autosave/submit < 500 ms pada 100 user serentak.
+
+
+7. REFERENSI YANG DIPAKAI
+--------------------------------------------------------------------------------
+  - PHP Manual - password_needs_rehash():
+    https://www.php.net/manual/en/function.password-needs-rehash.php
+    Relevan untuk meningkatkan cost/algorithm hash lama tanpa memaksa reset
+    password (dipakai pada saran 3.3).
+  - MySQL 8 Reference Manual - CREATE INDEX / functional key parts dan
+    optimasi query:
+    https://dev.mysql.com/doc/refman/8.0/en/create-index.html
+    https://dev.mysql.com/doc/refman/8.0/en/optimization-indexes.html
+    Relevan untuk saran 2.3 (hindari LOWER()/TRIM() pada kolom ter-index,
+    atau gunakan generated/functional index).
+  - Dokumentasi internal proyek: README.md, database/schema.sql,
+    seluruh lib/*.php, modules/*.php, api.php, media.php, upload.php,
+    setup.php, assets/js/rpc-shim.js, Index.html.
+  - MCP Context7 library ID yang dipakai:
+    /websites/php_net_manual_en
+    /websites/dev_mysql_doc
+
+
+8. CATATAN PENUTUP
+--------------------------------------------------------------------------------
+  - Dokumen ini tidak mengubah kode, database, konfigurasi, maupun berkas
+    lain. Hanya berisi rekomendasi.
+  - Urutan pengerjaan disarankan mengikuti Bagian 5; jangan menunda item P0
+    sampai setelah ujian sungguhan.
+  - Setiap perbaikan sebaiknya disertai tes regresi, terutama untuk alur
+    start -> autosave -> submit -> rekap, karena bagian ini menyentuh data
+    nilai siswa.
+  - Setelah perbaikan keamanan, rotasi API key Gemini dan semua kredensial
+    database yang pernah terekspos, serta paksa login ulang seluruh pengguna.
+
+================================================================================

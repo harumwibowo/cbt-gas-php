@@ -3,7 +3,7 @@
  * Endpoint RPC tunggal — padanan google.script.run pada aplikasi Apps Script.
  *
  * Pemakaian:  POST api.php?action=namaFungsi  body: {"args":[...]}
- *             GET  api.php?action=namaFungsi&args=[...]
+ *             Hanya POST; permintaan GET ditolak 405.
  *
  * Selalu mengembalikan JSON. Bila fungsi melempar exception, status HTTP 500
  * dengan {"error": "..."} sehingga withFailureHandler di klien terpanggil.
@@ -22,10 +22,26 @@ require_once APP_ROOT . '/modules/student.php';
 require_once APP_ROOT . '/modules/student_exam.php';
 require_once APP_ROOT . '/modules/gemini.php';
 require_once APP_ROOT . '/lib/update.php';
+require_once APP_ROOT . '/lib/rbac.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
+
+// Endpoint ini hanya melayani POST. Mencegah aksi state-changing dipicu lewat
+// gambar/tautan GET dan mempermudah pemeriksaan origin.
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    http_response_code(405);
+    echo json_encode(['error' => 'Metode tidak diizinkan. Gunakan POST.']);
+    exit;
+}
+
+if (!api_request_is_same_origin()) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Origin request tidak diizinkan.']);
+    exit;
+}
 
 /** Daftar aksi yang boleh dipanggil dari klien (whitelist). */
 const ALLOWED_ACTIONS = [
@@ -80,11 +96,6 @@ if (isset($payload['args']) && is_array($payload['args'])) {
     if (is_array($decodedArgs)) {
         $args = array_values($decodedArgs);
     }
-} elseif (isset($_GET['args'])) {
-    $decodedArgs = json_decode((string) $_GET['args'], true);
-    if (is_array($decodedArgs)) {
-        $args = array_values($decodedArgs);
-    }
 }
 
 if ($action === '') {
@@ -113,6 +124,9 @@ try {
     // Bootstrap skema otomatis (idempotent) agar aplikasi langsung siap pakai.
     ensure_schema();
 
+    // Otorisasi terpusat: sesi + peran + kepemilikan ujian.
+    rbac_authorize($action, $args);
+
     $callable = null;
     foreach (get_defined_functions()['user'] as $fn) {
         if (strcasecmp($fn, $action) === 0) {
@@ -127,11 +141,17 @@ try {
 
     $result = call_user_func_array($callable, $args);
     echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+} catch (RbacDenied $e) {
+    http_response_code(403);
+    echo json_encode(
+        ['error' => client_error_message($e->getMessage()), 'action' => $action],
+        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+    );
 } catch (Throwable $e) {
-    error_log('[CBT API] ' . $action . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+    error_log('[' . request_id() . '] [CBT API] ' . $action . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
     http_response_code(500);
     echo json_encode(
-        ['error' => $e->getMessage(), 'action' => $action],
+        ['error' => client_error_message($e->getMessage()), 'action' => $action],
         JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
     );
 }

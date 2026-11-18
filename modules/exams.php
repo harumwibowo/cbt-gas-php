@@ -12,7 +12,7 @@ function exam_to_client(array $row, int $jumlahSoal = 0, int $jumlahPeserta = 0)
     $policy = violation_policy();
     return [
         'id_ujian'             => tostr($row['id_ujian']),
-        'nama_ujian'           => tostr($row['nama_ujian']),
+        'nama_ujian'           => sanitize_plain_text($row['nama_ujian']),
         'durasi_menit'         => (int) $row['durasi_menit'] > 0 ? (int) $row['durasi_menit'] : 60,
         'waktu_mulai'          => format_datetime_iso($row['waktu_mulai']),
         'waktu_selesai'        => format_datetime_iso($row['waktu_selesai']),
@@ -107,7 +107,7 @@ function getTeacherExams($username, $token): array
             $catalog
         );
     } catch (Throwable $e) {
-        return err('Gagal memuat daftar ujian: ' . $e->getMessage());
+        return err('Gagal memuat daftar ujian: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -124,30 +124,42 @@ function saveExam($username, $token, $examData): array
     try {
         $isEdit = tostr($examData['id_ujian'] ?? '') !== '';
 
-        $namaVal = tostr($examData['nama_ujian'] ?? '');
+        $namaVal = limit_text(sanitize_plain_text($examData['nama_ujian'] ?? ''), 200);
+        if ($namaVal === '') {
+            return err('Nama ujian wajib diisi.');
+        }
         $durasiVal = (int) ($examData['durasi_menit'] ?? 0);
         if ($durasiVal <= 0) {
             $durasiVal = 60;
         }
+        if ($durasiVal > 1440) {
+            return err('Durasi ujian maksimal 1440 menit (24 jam).');
+        }
         $mulaiVal = to_db_datetime($examData['waktu_mulai'] ?? '');
         $selesaiVal = to_db_datetime($examData['waktu_selesai'] ?? '');
-        $acakSoalVal = tostr($examData['acak_soal'] ?? '') !== '' ? tostr($examData['acak_soal']) : 'Ya';
-        $acakOpsiVal = tostr($examData['acak_opsi'] ?? '') !== '' ? tostr($examData['acak_opsi']) : 'Ya';
-        $tokenVal = strtoupper(tostr($examData['token_ujian'] ?? ''));
+        if ($mulaiVal === null || $selesaiVal === null) {
+            return err('Waktu mulai dan waktu selesai ujian wajib diisi dengan format yang valid.');
+        }
+        if (strtotime($selesaiVal) <= strtotime($mulaiVal)) {
+            return err('Waktu selesai harus lebih besar daripada waktu mulai.');
+        }
+        $acakSoalVal = strtolower(trim(tostr($examData['acak_soal'] ?? ''))) === 'tidak' ? 'Tidak' : 'Ya';
+        $acakOpsiVal = strtolower(trim(tostr($examData['acak_opsi'] ?? ''))) === 'tidak' ? 'Tidak' : 'Ya';
+        $tokenVal = limit_text(strtoupper(sanitize_plain_text($examData['token_ujian'] ?? '')), 50);
         $tipePesertaVal = strtolower(tostr($examData['tipe_peserta'] ?? '')) === 'khusus' ? 'khusus' : 'general';
         $pesertaKhususVal = '';
 
         $kelasRaw = $examData['kelas'] ?? '';
         $kelasVal = is_array($kelasRaw)
             ? implode(', ', array_map('tostr', $kelasRaw))
-            : tostr($kelasRaw);
+            : sanitize_plain_text($kelasRaw);
 
         $sesiRaw = $examData['sesi'] ?? '';
         $sesiVal = is_array($sesiRaw)
             ? implode(', ', array_map('tostr', $sesiRaw))
-            : trim(tostr($sesiRaw));
+            : limit_text(sanitize_plain_text($sesiRaw), 200);
 
-        $tingkatVal = trim(tostr($examData['tingkat'] ?? ''));
+        $tingkatVal = limit_text(sanitize_plain_text($examData['tingkat'] ?? ''), 50);
 
         // Jumlah soal yang ditampilkan (0 = semua)
         $jumlahSoalTampilVal = 0;
@@ -281,7 +293,7 @@ function saveExam($username, $token, $examData): array
         );
         return ['success' => true, 'message' => 'Ujian berhasil dibuat.', 'id_ujian' => $newExamId];
     } catch (Throwable $e) {
-        return err('Gagal menyimpan ujian: ' . $e->getMessage());
+        return err('Gagal menyimpan ujian: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -296,6 +308,11 @@ function deleteExam($username, $token, $id_ujian): array
 
     try {
         $idUjian = tostr($id_ujian);
+        $examRow = db_one('SELECT id_ujian FROM exams WHERE id_ujian = ?', [$idUjian]);
+        if (!$examRow) {
+            return err('Ujian tidak ditemukan.');
+        }
+
         // Kumpulkan gambar soal sebelum baris dihapus agar berkas media ikut dibersihkan.
         $urlsGambar = [];
         if (function_exists('media_delete_if_unused')) {
@@ -303,10 +320,13 @@ function deleteExam($username, $token, $id_ujian): array
                 $urlsGambar[] = tostr($rowQ['url_gambar']);
             }
         }
+
+        db()->beginTransaction();
         db_exec('DELETE FROM exams WHERE id_ujian = ?', [$idUjian]);
         db_exec('DELETE FROM questions WHERE id_ujian = ?', [$idUjian]);
         db_exec('DELETE FROM teks_ujian WHERE id_ujian = ?', [$idUjian]);
         $deletedResultsCount = db_exec('DELETE FROM results WHERE id_ujian = ?', [$idUjian]);
+        db()->commit();
 
         foreach ($urlsGambar as $urlGambarSoal) {
             media_delete_if_unused($urlGambarSoal);
@@ -319,6 +339,9 @@ function deleteExam($username, $token, $id_ujian): array
         );
         return ['success' => true, 'message' => 'Ujian beserta bank soal dan seluruh data pengerjaan siswa berhasil dihapus.'];
     } catch (Throwable $e) {
-        return err($e->getMessage());
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        return err('Gagal menghapus ujian: ' . client_error_message($e->getMessage()));
     }
 }

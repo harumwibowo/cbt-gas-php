@@ -128,9 +128,15 @@ if (preg_match('~^https?://~i', $logo)) {
 }
 
 // Logo jalur relatif lokal.
-if (preg_match('~^[A-Za-z0-9_\-./]+\.(png|jpe?g|webp|gif|svg|ico)$~i', $logo)) {
+if (preg_match('~^[A-Za-z0-9_\-./]+\.(png|jpe?g|webp|gif|svg|ico)$~i', $logo)
+    && !str_contains($logo, '..')) {
     $path = __DIR__ . '/' . ltrim($logo, './');
-    if (is_file($path)) {
+    $realPath = realpath($path);
+    $rootPath = realpath(__DIR__);
+    if ($realPath !== false && $rootPath !== false
+        && str_starts_with($realPath, $rootPath . DIRECTORY_SEPARATOR)
+        && is_file($realPath)) {
+        $path = $realPath;
         $bytes = (string) file_get_contents($path);
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         $map = ['png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg',

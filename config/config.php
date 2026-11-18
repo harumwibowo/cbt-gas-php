@@ -42,7 +42,7 @@ define('ALLOWED_IMAGE_MIMES', [
     'image/jpeg'    => 'jpg',
     'image/webp'    => 'webp',
     'image/gif'     => 'gif',
-    'image/svg+xml' => 'svg',
+    // SVG sengaja tidak diizinkan: dapat memuat script/iframe (stored XSS).
 ]);
 
 date_default_timezone_set(APP_TIMEZONE);
@@ -58,6 +58,7 @@ define('APP_ROOT', dirname(__DIR__));
 
 require_once APP_ROOT . '/lib/db.php';
 require_once APP_ROOT . '/lib/helpers.php';
+require_once APP_ROOT . '/lib/security.php';
 require_once APP_ROOT . '/lib/version.php';
 require_once APP_ROOT . '/lib/crypto.php';
 require_once APP_ROOT . '/lib/auth.php';

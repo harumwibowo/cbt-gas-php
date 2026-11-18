@@ -18,6 +18,18 @@ if ($action !== '') {
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
 
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        header('Allow: POST');
+        http_response_code(405);
+        echo json_encode(['success' => false, 'message' => 'Gunakan POST untuk aksi setup.']);
+        exit;
+    }
+    if (!setup_actions_allowed()) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Setup ulang hanya dapat dijalankan dari localhost.']);
+        exit;
+    }
+
     $body = file_get_contents('php://input');
     $input = json_decode((string) $body, true);
     if (!is_array($input)) {
@@ -40,7 +52,8 @@ if ($action !== '') {
         }
     } catch (Throwable $e) {
         http_response_code(500);
-        $result = ['success' => false, 'message' => $e->getMessage()];
+        error_log('[' . request_id() . '] [CBT setup] ' . $e->getMessage());
+        $result = ['success' => false, 'message' => client_error_message($e->getMessage())];
     }
 
     echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -49,6 +62,11 @@ if ($action !== '') {
 
 // --------------------------------------------------------- sudah terpasang?
 if (!$force && !setup_needs_wizard()) {
+    header('Location: index.php');
+    exit;
+}
+
+if ($force && !setup_actions_allowed()) {
     header('Location: index.php');
     exit;
 }

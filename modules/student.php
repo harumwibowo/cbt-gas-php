@@ -268,21 +268,21 @@ function getStudentAvailableExams($username, $token): array
                 $examState = 'SUBMITTED';
             }
 
-            $tokenVal = tostr($examRow['token_ujian']);
+            $tokenVal = strtoupper(tostr($examRow['token_ujian']));
             $item = [
                 'id_ujian'             => $examId,
-                'nama_ujian'           => tostr($examRow['nama_ujian']),
+                'nama_ujian'           => sanitize_plain_text($examRow['nama_ujian']),
                 'durasi_menit'         => (int) $examRow['durasi_menit'] > 0 ? (int) $examRow['durasi_menit'] : 60,
                 'waktu_mulai'          => $rawMulai,
                 'waktu_selesai'        => $rawSelesai,
                 'acak_soal'            => tostr($examRow['acak_soal']) !== '' ? tostr($examRow['acak_soal']) : 'Ya',
                 'acak_opsi'            => tostr($examRow['acak_opsi']) !== '' ? tostr($examRow['acak_opsi']) : 'Ya',
-                'token_ujian'          => $tokenVal,
+                // Token tidak dikirim ke siswa; hanya status pemakaian token.
+                'has_token'            => $tokenVal !== '',
                 'kelas'                => $tipePeserta === 'khusus' ? 'Peserta Khusus' : ($examClassesRaw !== '' ? $examClassesRaw : 'Semua Kelas'),
                 'sesi'                 => $examSessionsRaw !== '' ? $examSessionsRaw : 'Semua Sesi',
                 'tipe_peserta'         => $tipePeserta,
                 'peserta_khusus'       => $pesertaKhususRaw,
-                'has_token'            => $tokenVal !== '',
                 'jumlah_soal'          => $qCount,
                 'jumlah_soal_tampil'   => (int) $examRow['jumlah_soal_tampil'],
                 'jumlah_percobaan'     => $attemptLimit,
@@ -313,9 +313,11 @@ function getStudentAvailableExams($username, $token): array
             'exams'            => $activeList,
             'completed_exams'  => $completedList,
             'all_exams'        => $allList,
+            'server_time'      => now_dt(),
+            'server_epoch'     => time(),
         ];
     } catch (Throwable $e) {
-        return err('Gagal memuat ujian siswa: ' . $e->getMessage());
+        return err('Gagal memuat ujian siswa: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -340,7 +342,7 @@ function getStudentExamReview($username, $token, $id_ujian): array
         }
         $examInfo = [
             'id_ujian'             => $targetExamId,
-            'nama_ujian'           => tostr($examRow['nama_ujian']),
+            'nama_ujian'           => sanitize_plain_text($examRow['nama_ujian']),
             'tampilkan_pembahasan' => strtolower(trim(tostr($examRow['tampilkan_pembahasan']))) === 'ya' ? 'Ya' : 'Tidak',
         ];
         if ($examInfo['tampilkan_pembahasan'] !== 'Ya') {
@@ -429,18 +431,18 @@ function getStudentExamReview($username, $token, $id_ujian): array
             $qTeksObj = $textMap[$qIdTeks] ?? null;
             $item = [
                 'id_soal'       => $qId,
-                'teks_soal'     => tostr($qRow['teks_soal']),
-                'url_gambar'    => tostr($qRow['url_gambar']),
+                'teks_soal'     => sanitize_html_fragment($qRow['teks_soal']),
+                'url_gambar'    => safe_media_url($qRow['url_gambar']),
                 'kunci_jawaban' => $kunci,
-                'pembahasan'    => tostr($qRow['pembahasan']),
+                'pembahasan'    => sanitize_html_fragment($qRow['pembahasan']),
                 'bobot'         => (int) $qRow['bobot'] > 0 ? (int) $qRow['bobot'] : 1,
                 'jawaban_siswa' => $jawabanSiswa,
                 'is_benar'      => $isBenar,
-                'nama_teks'     => $qTeksObj ? $qTeksObj['nama_teks'] : '',
-                'teks_konteks'  => $qTeksObj ? $qTeksObj['isi_teks'] : '',
+                'nama_teks'     => $qTeksObj ? sanitize_plain_text($qTeksObj['nama_teks']) : '',
+                'teks_konteks'  => $qTeksObj ? sanitize_html_fragment($qTeksObj['isi_teks']) : '',
             ];
             foreach (option_letters() as $l) {
-                $item['opsi_' . $l] = tostr($qRow['opsi_' . $l] ?? '');
+                $item['opsi_' . $l] = sanitize_html_fragment($qRow['opsi_' . $l] ?? '');
             }
             $questions[] = $item;
         }
@@ -464,10 +466,10 @@ function getStudentExamReview($username, $token, $id_ujian): array
                 $qTeksObj2 = $textMap[$qIdTeks2] ?? null;
                 $item2 = [
                     'id_soal'       => $qId2,
-                    'teks_soal'     => tostr($qRow['teks_soal']),
-                    'url_gambar'    => tostr($qRow['url_gambar']),
+                    'teks_soal'     => sanitize_html_fragment($qRow['teks_soal']),
+                    'url_gambar'    => safe_media_url($qRow['url_gambar']),
                     'kunci_jawaban' => $kunci2,
-                    'pembahasan'    => tostr($qRow['pembahasan']),
+                    'pembahasan'    => sanitize_html_fragment($qRow['pembahasan']),
                     'bobot'         => (int) $qRow['bobot'] > 0 ? (int) $qRow['bobot'] : 1,
                     'jawaban_siswa' => $jawaban2,
                     'is_benar'      => $isBenar2,
@@ -475,7 +477,7 @@ function getStudentExamReview($username, $token, $id_ujian): array
                     'teks_konteks'  => $qTeksObj2 ? $qTeksObj2['isi_teks'] : '',
                 ];
                 foreach (option_letters() as $l) {
-                    $item2['opsi_' . $l] = tostr($qRow['opsi_' . $l] ?? '');
+                    $item2['opsi_' . $l] = sanitize_html_fragment($qRow['opsi_' . $l] ?? '');
                 }
                 $questions[] = $item2;
             }
@@ -493,7 +495,7 @@ function getStudentExamReview($username, $token, $id_ujian): array
             ],
         ];
     } catch (Throwable $e) {
-        return err('Gagal memuat pembahasan ujian: ' . $e->getMessage());
+        return err('Gagal memuat pembahasan ujian: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -519,9 +521,9 @@ function find_result_record(string $idUjian, string $username, $percobaanKe = nu
         return null;
     }
 
-    // Kelompokkan per percobaan lalu pilih yang terbaik; sisanya duplikat
+    // Kelompokkan per percobaan lalu pilih yang terbaik. Jalur baca bersifat
+    // read-only; duplikat lama dibersihkan oleh migrasi unique index.
     $grouped = [];
-    $duplicates = [];
     foreach ($rows as $row) {
         $key = (string) get_result_attempt_number($row);
         if (!isset($grouped[$key])) {
@@ -532,18 +534,9 @@ function find_result_record(string $idUjian, string $username, $percobaanKe = nu
         $rowStatus = strtoupper(trim(tostr($row['status'])));
         $chosenStatus = strtoupper(trim(tostr($chosen['status'])));
         if ($rowStatus === 'SUBMITTED' && $chosenStatus !== 'SUBMITTED') {
-            $duplicates[] = $chosen['id_hasil'];
             $grouped[$key] = $row;
         } elseif ($rowStatus === $chosenStatus && (float) $row['nilai_akhir'] > (float) $chosen['nilai_akhir']) {
-            $duplicates[] = $chosen['id_hasil'];
             $grouped[$key] = $row;
-        } else {
-            $duplicates[] = $row['id_hasil'];
-        }
-    }
-    foreach (array_unique($duplicates) as $dupId) {
-        if ($dupId !== '') {
-            db_exec('DELETE FROM results WHERE id_hasil = ?', [$dupId]);
         }
     }
 

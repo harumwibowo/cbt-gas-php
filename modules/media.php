@@ -222,11 +222,15 @@ function media_delete_if_unused($url): void
         return;
     }
     try {
-        $dipakaiSoal = (int) db_val(
-            "SELECT COUNT(*) FROM questions WHERE url_gambar LIKE ?",
-            ['%' . $idMedia . '%'],
-            0
-        );
+        // LIKE hanya untuk mempersempit kandidat; kepastian dicocokkan dengan
+        // media_id_from_url agar ID pendek tidak salah cocok dengan ID lain.
+        $dipakaiSoal = 0;
+        foreach (db_all("SELECT url_gambar FROM questions WHERE url_gambar LIKE ?", ['%media.php?id=' . $idMedia . '%']) as $row) {
+            if (media_id_from_url($row['url_gambar']) === $idMedia) {
+                $dipakaiSoal++;
+                break;
+            }
+        }
         $dipakaiLogo = media_id_from_url(settings_map()['logo_url'] ?? '') === $idMedia;
         if ($dipakaiSoal === 0 && !$dipakaiLogo) {
             media_delete_by_id($idMedia);

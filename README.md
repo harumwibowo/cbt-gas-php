@@ -1,6 +1,6 @@
 # CBT GAS — PHP 8 + MySQL
 
-**Versi rilis:** `1.0.5` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
+**Versi rilis:** `1.0.6` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
 proyek (satu baris, mis. `1.0.3`). Berkas ini ikut tersalin saat pembaruan dari GitHub,
 sehingga label versi di **kartu Pembaruan Aplikasi** dan di **halaman login** otomatis
 berganti. Naikkan isinya setiap kali merilis versi baru.
@@ -46,7 +46,7 @@ shim kecil di browser, sehingga tidak ada satu pun komponen UI yang perlu dituli
 
 **Server aplikasi**
 
-- **PHP 8.0 atau lebih baru** (diuji pada PHP 8.3.33; disarankan 8.2/8.3).
+- **PHP 8.1 atau lebih baru** (diuji pada PHP 8.3.33; disarankan 8.2/8.3).
 - Ekstensi PHP wajib aktif:
 
   | Ekstensi | Dipakai untuk |
@@ -147,6 +147,9 @@ daripada `config/database.json` (cocok untuk Docker/PaaS):
 | `CBT_DB_NAME` | `cbt_gas` |
 | `CBT_DB_USER` | `root` |
 | `CBT_DB_PASS` | *(kosong)* |
+| `CBT_SESSION_TTL_MINUTES` | `720` (batas absolut sesi login) |
+| `CBT_SESSION_IDLE_MINUTES` | `120` (sesi berakhir bila tidak aktif) |
+| `CBT_ALLOW_REINSTALL` | *(tidak diset)*; isi `1` hanya untuk mengizinkan ulang wizard setup dari host non-localhost |
 
 Contoh Apache (`SetEnv`) / Nginx (`fastcgi_param`) sama seperti di dokumentasi umum:
 cukup tambahkan variabel di atas, lalu aplikasi tidak memakai `config/database.json`.
@@ -255,7 +258,9 @@ server {
 2. **MultiPHP Manager**: pilih PHP **8.1+** untuk domain tersebut.
 3. **MultiPHP INI Editor**: set `upload_max_filesize=16M`, `post_max_size=17M`,
    `max_execution_time=120`.
-4. **MySQL Databases**: buat database + user, beri *ALL PRIVILEGES* pada database itu.
+4. **MySQL Databases**: buat database + user. Untuk wizard instalasi, user perlu izin
+   `SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES` pada database itu.
+   Setelah instalasi selesai, cabut `CREATE`, `ALTER`, dan `DROP` dari user runtime.
 5. Isi kredensial lewat environment variable (bila panel mendukung) atau
    `config/config.php`.
 6. Buka `https://domain-anda.sch.id/cbt-gas-php/index.php`.
@@ -575,7 +580,7 @@ php tools/migrate-passwords.php --dry-run
 
 | Gejala | Penyebab & solusi |
 |---|---|
-| `Gagal terhubung ke MySQL` | MySQL mati, kredensial salah, atau user tidak punya izin `CREATE`. Periksa `CBT_DB_*`, uji dengan `mysql -u user -p`. |
+| `Gagal terhubung ke MySQL` | MySQL mati atau kredensial salah. Database tidak lagi dibuat otomatis saat runtime; buat lewat wizard setup atau `CREATE DATABASE`. Periksa `CBT_DB_*`, uji dengan `mysql -u user -p`. |
 | Halaman putih / 500 di `api.php` | Error PHP. `display_errors` sengaja dimatikan agar JSON tidak rusak — cek `error_log` (Apache/Nginx) atau jalankan `php -l file.php`. |
 | Browser menampilkan JSON, bukan UI | Anda membuka `api.php` langsung, atau `DirectoryIndex` tidak memuat `index.php`. |
 | Login siswa ditolak | `allowed_student_browsers` di Pengaturan membatasi User-Agent. Kosongkan bila ingin semua browser. |

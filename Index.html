@@ -4431,7 +4431,10 @@
           console.error('Gagal membaca pengaturan dari database:', err);
           if (typeof callback === 'function') callback(null);
         })
-        .getSettings();
+        .getSettings(
+          (AppState.user && AppState.user.username) || '',
+          AppState.token || ''
+        );
     }
 
     // ==========================================
@@ -4653,7 +4656,7 @@
           showToast('Gagal menguji koneksi: ' + err.message, 'error');
           lucide.createIcons();
         })
-        .testGeminiConnection(apiKey, model);
+        .testGeminiConnection(AppState.user.username, AppState.token, apiKey, model);
     }
 
     function loadGeminiModelsFromAdmin() {
@@ -4703,7 +4706,7 @@
           showToast('Gagal memuat model: ' + err.message, 'error');
           lucide.createIcons();
         })
-        .getGeminiModels(apiKey);
+        .getGeminiModels(AppState.user.username, AppState.token, apiKey);
     }
 
     // ==========================================
@@ -10800,7 +10803,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     function buildPrintCardHtml(student, ctx) {
       const name = escapeHtml(student.nama_lengkap || student.username || '-');
       const uname = escapeHtml(student.username || '-');
-      const pass = escapeHtml(student.password || '-');
+      const pass = escapeHtml(student.password_available === false ? 'Tidak tersedia' : (student.password || '-'));
       const kelasRaw = (student.kelas || '').trim();
       const sesiRaw = (student.sesi || '').trim();
       const kelas = escapeHtml(kelasRaw && kelasRaw !== '-' ? kelasRaw : '-');

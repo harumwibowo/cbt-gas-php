@@ -4,6 +4,76 @@
  */
 declare(strict_types=1);
 
+/** Batas toleransi setelah deadline sebelum jawaban dianggap terlambat. */
+const EXAM_LATE_GRACE_SECONDS = 60;
+
+/**
+ * Rentang waktu ujian dari baris exams (timestamp atau null bila kosong).
+ *
+ * @return array{start:?int,end:?int}
+ */
+function exam_time_bounds(array $examRow): array
+{
+    $start = tostr($examRow['waktu_mulai'] ?? '');
+    $end = tostr($examRow['waktu_selesai'] ?? '');
+    $startTs = $start !== '' ? strtotime($start) : false;
+    $endTs = $end !== '' ? strtotime($end) : false;
+    return [
+        'start' => $startTs === false ? null : $startTs,
+        'end'   => $endTs === false ? null : $endTs,
+    ];
+}
+
+/**
+ * Hitung deadline pengerjaan: mulai + durasi, dibatasi waktu selesai ujian.
+ */
+function exam_compute_deadline(array $examRow, ?int $startTs = null): ?string
+{
+    $startTs = $startTs ?? time();
+    $duration = (int) ($examRow['durasi_menit'] ?? 0);
+    $duration = $duration > 0 ? $duration : 60;
+    $deadline = $startTs + ($duration * 60);
+    $bounds = exam_time_bounds($examRow);
+    if ($bounds['end'] !== null && $bounds['end'] < $deadline) {
+        $deadline = $bounds['end'];
+    }
+    return date('Y-m-d H:i:s', $deadline);
+}
+
+/** Deadline efektif untuk satu baris hasil ujian. */
+function exam_result_deadline(array $examRow, array $resultRow): ?string
+{
+    $stored = tostr($resultRow['deadline_at'] ?? '');
+    if ($stored !== '' && !str_starts_with($stored, '0000')) {
+        return $stored;
+    }
+    $startTs = tostr($resultRow['waktu_mulai'] ?? '') !== ''
+        ? strtotime(tostr($resultRow['waktu_mulai']))
+        : false;
+    return exam_compute_deadline($examRow, $startTs === false ? time() : $startTs);
+}
+
+/** True bila waktu sekarang melewati deadline (+ toleransi). */
+function exam_deadline_passed(?string $deadline, int $grace = EXAM_LATE_GRACE_SECONDS): bool
+{
+    if ($deadline === null || trim($deadline) === '') {
+        return false;
+    }
+    $ts = strtotime($deadline);
+    return $ts !== false && time() > ($ts + $grace);
+}
+
+/** Ambil jawaban tersimpan dari detail_jawaban (array id_soal => huruf). */
+function exam_stored_answers(array $resultRow): array
+{
+    $raw = tostr($resultRow['detail_jawaban'] ?? '');
+    if ($raw === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
 /**
  * Mulai / lanjutkan ujian siswa (padanan startStudentExam()).
  * Kunci jawaban tidak pernah dikirim ke klien.
@@ -25,13 +95,15 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
 
         $exam = [
             'id_ujian'             => tostr($examRow['id_ujian']),
-            'nama_ujian'           => tostr($examRow['nama_ujian']),
+            'nama_ujian'           => sanitize_plain_text($examRow['nama_ujian']),
             'durasi_menit'         => (int) $examRow['durasi_menit'] > 0 ? (int) $examRow['durasi_menit'] : 60,
             'waktu_mulai'          => format_datetime_iso($examRow['waktu_mulai']),
             'waktu_selesai'        => format_datetime_iso($examRow['waktu_selesai']),
             'acak_soal'            => tostr($examRow['acak_soal']) !== '' ? tostr($examRow['acak_soal']) : 'Ya',
             'acak_opsi'            => tostr($examRow['acak_opsi']) !== '' ? tostr($examRow['acak_opsi']) : 'Ya',
-            'token_ujian'          => strtoupper(tostr($examRow['token_ujian'])),
+            // Token TIDAK dikirim ke klien. Token hanya diverifikasi di server.
+            // Klien hanya perlu tahu apakah ujian memakai token (has_token).
+            'has_token'            => strtoupper(tostr($examRow['token_ujian'])) !== '',
             'kelas'                => tostr($examRow['kelas']),
             'sesi'                 => tostr($examRow['sesi']),
             'tipe_peserta'         => tostr($examRow['tipe_peserta']) !== '' ? strtolower(tostr($examRow['tipe_peserta'])) : 'general',
@@ -46,6 +118,16 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
         $studentClass = $profile['kelas'];
         $studentSession = $profile['sesi'];
         $userLower = strtolower(trim($userName));
+
+        // Jendela waktu ujian ditegakkan di server, bukan hanya di browser.
+        $bounds = exam_time_bounds($examRow);
+        $nowTs = time();
+        if ($bounds['start'] !== null && $nowTs < $bounds['start']) {
+            return err('Ujian belum dimulai. Jadwal mulai: ' . dt_display($examRow['waktu_mulai'] ?? ''));
+        }
+        if ($bounds['end'] !== null && $nowTs > $bounds['end']) {
+            return err('Waktu ujian telah berakhir. Anda tidak dapat memulai atau melanjutkan ujian ini.');
+        }
 
         // Validasi target peserta
         if ($exam['tipe_peserta'] === 'khusus') {
@@ -110,6 +192,24 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
                 return err('Akses Anda ke ujian ini terblokir karena batas pelanggaran keamanan tercapai. Silakan hubungi guru/pengawas untuk membuka blokir.');
             }
 
+            if ($status === 'DRAFT') {
+                $draftDeadline = exam_result_deadline($examRow, $existingRecord['row']);
+                if (exam_deadline_passed($draftDeadline)) {
+                    // Jangan biarkan draft kedaluwarsa terus dibuka. Kumpulkan
+                    // jawaban terakhir yang tersimpan di server.
+                    $auto = submitExam($username, $token, [
+                        'id_ujian'     => $idUjian,
+                        'answers'      => exam_stored_answers($existingRecord['row']),
+                        'violations'   => (int) ($existingRecord['row']['jumlah_pelanggaran'] ?? 0),
+                        'isAutoSubmit' => true,
+                        'reason'       => 'Batas waktu pengerjaan tercapai',
+                        'percobaan_ke' => $attemptNumber,
+                    ]);
+                    $scoreText = ($auto['success'] ?? false) ? ' Nilai Anda: ' . ($auto['score'] ?? 0) . '.' : '';
+                    return err('Waktu pengerjaan ujian telah berakhir. Jawaban terakhir Anda telah dikumpulkan otomatis.' . $scoreText);
+                }
+            }
+
             if ($status === 'SUBMITTED') {
                 if ($attemptsUsed >= $maxAttempts) {
                     $limitMessage = $maxAttempts > 1
@@ -134,9 +234,10 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
         }
 
         // Verifikasi token ujian (tidak diminta ulang saat melanjutkan)
-        if ($exam['token_ujian'] !== '' && !$isResume) {
+        $examToken = strtoupper(trim(tostr($examRow['token_ujian'] ?? '')));
+        if ($examToken !== '' && !$isResume) {
             $enteredToken = strtoupper(trim(tostr($inputToken)));
-            if ($enteredToken === '' || $enteredToken !== $exam['token_ujian']) {
+            if ($enteredToken === '' || !hash_equals($examToken, $enteredToken)) {
                 return err('Token ujian salah. Silakan minta token yang valid kepada guru pengawas.');
             }
         }
@@ -144,11 +245,12 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
         if ($draftData === null) {
             $nowStr = now_dt();
             $newResultId = new_id('RES');
+            $newDeadline = exam_compute_deadline($examRow, $nowTs);
             db_exec(
                 'INSERT INTO results (id_hasil, id_ujian, username_siswa, waktu_mulai, waktu_submit, jumlah_pelanggaran,
-                    nilai_akhir, status, detail_jawaban, soal_terpilih, percobaan_ke)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                [$newResultId, $idUjian, $userName, $nowStr, null, 0, 0, 'DRAFT', '{}', '', $attemptNumber]
+                    nilai_akhir, status, detail_jawaban, soal_terpilih, percobaan_ke, deadline_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                [$newResultId, $idUjian, $userName, $nowStr, null, 0, 0, 'DRAFT', '{}', '', $attemptNumber, $newDeadline]
             );
             $draftData = [
                 'id_hasil'           => $newResultId,
@@ -157,7 +259,15 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
                 'detail_jawaban'     => '{}',
                 'percobaan_ke'       => $attemptNumber,
                 'is_resume'          => false,
+                'deadline_at'        => $newDeadline,
             ];
+        } else {
+            // Draft lama tanpa deadline (data sebelum migrasi) dihitung dan disimpan.
+            $resumeDeadline = exam_result_deadline($examRow, $existingRecord['row']);
+            if (tostr($existingRecord['row']['deadline_at'] ?? '') === '' && $resumeDeadline !== null) {
+                db_exec('UPDATE results SET deadline_at = ? WHERE id_hasil = ?', [$resumeDeadline, tostr($existingRecord['row']['id_hasil'])]);
+            }
+            $draftData['deadline_at'] = $resumeDeadline;
         }
 
         // Ambil soal tanpa kunci jawaban
@@ -170,15 +280,15 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
             $qTeksObj = $textMap[$qIdTeks] ?? null;
             $qObj = [
                 'id_soal'      => tostr($qRow['id_soal']),
-                'teks_soal'    => tostr($qRow['teks_soal']),
-                'url_gambar'   => tostr($qRow['url_gambar']),
+                'teks_soal'    => sanitize_html_fragment($qRow['teks_soal']),
+                'url_gambar'   => safe_media_url($qRow['url_gambar']),
                 'bobot'        => (int) $qRow['bobot'] > 0 ? (int) $qRow['bobot'] : 1,
                 'id_teks'      => $qIdTeks,
-                'nama_teks'    => $qTeksObj ? $qTeksObj['nama_teks'] : '',
-                'teks_konteks' => $qTeksObj ? $qTeksObj['isi_teks'] : '',
+                'nama_teks'    => $qTeksObj ? sanitize_plain_text($qTeksObj['nama_teks']) : '',
+                'teks_konteks' => $qTeksObj ? sanitize_html_fragment($qTeksObj['isi_teks']) : '',
             ];
             foreach (option_letters() as $l) {
-                $qObj['opsi_' . $l] = tostr($qRow['opsi_' . $l] ?? '');
+                $qObj['opsi_' . $l] = sanitize_html_fragment($qRow['opsi_' . $l] ?? '');
             }
             $questions[] = $qObj;
         }
@@ -292,11 +402,13 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
         return [
             'success'   => true,
             'exam'      => $exam,
-            'questions' => $questions,
-            'draft'     => $draftData,
+            'questions'   => $questions,
+            'draft'       => $draftData,
+            'server_time' => now_dt(),
+            'server_epoch'=> time(),
         ];
     } catch (Throwable $e) {
-        return err('Gagal memuat lembar ujian: ' . $e->getMessage());
+        return err('Gagal memuat lembar ujian: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -311,38 +423,71 @@ function autosaveExam($username, $token, $payload): array
 
     $payload = is_array($payload) ? $payload : [];
     $idUjian = trim(tostr($payload['id_ujian'] ?? ''));
-    $answersJson = is_string($payload['answers'] ?? null)
-        ? (string) $payload['answers']
-        : json_encode($payload['answers'] ?? [], JSON_UNESCAPED_UNICODE);
-    $violations = (int) ($payload['violations'] ?? 0);
+    if ($idUjian === '') {
+        return err('ID ujian tidak valid.');
+    }
+
+    $rawAnswers = $payload['answers'] ?? [];
+    if (is_string($rawAnswers)) {
+        $decodedAnswers = json_decode($rawAnswers, true);
+        if (!is_array($decodedAnswers)) {
+            return err('Format jawaban tidak valid.');
+        }
+        $answersJson = $rawAnswers;
+    } else {
+        $answersJson = json_encode($rawAnswers, JSON_UNESCAPED_UNICODE);
+    }
+    if (strlen($answersJson) > 1048576) {
+        return err('Data jawaban terlalu besar.');
+    }
+    $violations = max(0, (int) ($payload['violations'] ?? 0));
 
     try {
         $requestedAttempt = $payload['percobaan_ke'] ?? null;
         $existingRecord = find_result_record($idUjian, tostr($username), $requestedAttempt);
+        if ($existingRecord === null) {
+            return err('Sesi ujian tidak ditemukan. Mulai ujian terlebih dahulu.');
+        }
 
-        if ($existingRecord !== null) {
-            if (strtoupper(trim(tostr($existingRecord['row']['status']))) === 'SUBMITTED') {
-                return err('Ujian sudah disubmit sebelumnya.');
-            }
-            db_exec(
-                'UPDATE results SET jumlah_pelanggaran = ?, detail_jawaban = ? WHERE id_hasil = ?',
-                [$violations, $answersJson, tostr($existingRecord['row']['id_hasil'])]
-            );
-        } else {
-            db_exec(
-                'INSERT INTO results (id_hasil, id_ujian, username_siswa, waktu_mulai, waktu_submit, jumlah_pelanggaran,
-                    nilai_akhir, status, detail_jawaban, soal_terpilih, percobaan_ke)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                [
-                    new_id('RES'), $idUjian, tostr($username), now_dt(), null, $violations, 0, 'DRAFT',
-                    $answersJson, '', normalize_exam_attempts($requestedAttempt),
-                ]
+        $status = strtoupper(trim(tostr($existingRecord['row']['status'])));
+        if ($status === 'SUBMITTED') {
+            return err('Ujian sudah disubmit sebelumnya.');
+        }
+        if ($status === 'TERBLOKIR') {
+            return err('Ujian Anda sedang diblokir. Hubungi guru/pengawas.');
+        }
+
+        $examRow = db_one('SELECT * FROM exams WHERE TRIM(id_ujian) = ?', [$idUjian]);
+        if (!$examRow) {
+            return err('Ujian tidak ditemukan.');
+        }
+        $deadline = exam_result_deadline($examRow, $existingRecord['row']);
+        if (exam_deadline_passed($deadline)) {
+            // Simpan bukan jawaban baru, tetapi kumpulkan jawaban terakhir yang
+            // sudah tersimpan di server. Jawaban setelah deadline tidak diterima.
+            $auto = submitExam($username, $token, [
+                'id_ujian'     => $idUjian,
+                'answers'      => exam_stored_answers($existingRecord['row']),
+                'violations'   => $violations,
+                'isAutoSubmit' => true,
+                'reason'       => 'Batas waktu pengerjaan tercapai (autosave)',
+                'percobaan_ke' => (int) $existingRecord['percobaan_ke'],
+            ]);
+            return err(
+                'Waktu pengerjaan telah berakhir. Jawaban terakhir Anda dikumpulkan otomatis.'
+                . (($auto['success'] ?? false) ? ' Nilai: ' . ($auto['score'] ?? 0) . '.' : ''),
+                ['expired' => true, 'auto_submitted' => (bool) ($auto['success'] ?? false), 'score' => $auto['score'] ?? null]
             );
         }
 
-        return ['success' => true, 'timestamp' => date('H:i:s')];
+        db_exec(
+            'UPDATE results SET jumlah_pelanggaran = ?, detail_jawaban = ?, deadline_at = COALESCE(deadline_at, ?) WHERE id_hasil = ?',
+            [$violations, $answersJson, $deadline, tostr($existingRecord['row']['id_hasil'])]
+        );
+
+        return ['success' => true, 'timestamp' => date('H:i:s'), 'deadline_at' => $deadline];
     } catch (Throwable $e) {
-        return err($e->getMessage());
+        return err('Gagal menyimpan jawaban: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -352,30 +497,87 @@ function autosaveExam($username, $token, $payload): array
 function recordViolation($username, $token, $payload): array
 {
     if (!validate_session($username, $token)) {
-        return ['success' => false];
+        return ['success' => false, 'message' => 'Sesi kedaluwarsa.'];
     }
 
     $payload = is_array($payload) ? $payload : [];
     $idUjian = trim(tostr($payload['id_ujian'] ?? ''));
-    $jenis = tostr($payload['jenis'] ?? '') !== '' ? tostr($payload['jenis']) : 'Tab Switch';
-    $violations = (int) ($payload['violations'] ?? 0) > 0 ? (int) $payload['violations'] : 1;
-    $keterangan = tostr($payload['keterangan'] ?? '') !== '' ? tostr($payload['keterangan']) : 'Terdeteksi meninggalkan layar ujian.';
-
-    log_activity(tostr($username), $jenis, 'Ujian: ' . $idUjian . ' | Pelanggaran ke-' . $violations . ' | ' . $keterangan);
-
-    try {
-        $existingRecord = find_result_record($idUjian, tostr($username));
-        if ($existingRecord !== null && strtoupper(trim(tostr($existingRecord['row']['status']))) !== 'SUBMITTED') {
-            db_exec(
-                'UPDATE results SET jumlah_pelanggaran = ? WHERE id_hasil = ?',
-                [$violations, tostr($existingRecord['row']['id_hasil'])]
-            );
-        }
-    } catch (Throwable $e) {
-        error_log('recordViolation: ' . $e->getMessage());
+    $jenis = limit_text(sanitize_plain_text($payload['jenis'] ?? ''), 80);
+    if ($jenis === '') {
+        $jenis = 'Tab Switch';
+    }
+    $keterangan = limit_text(sanitize_plain_text($payload['keterangan'] ?? ''), 500);
+    if ($keterangan === '') {
+        $keterangan = 'Terdeteksi meninggalkan layar ujian.';
+    }
+    if ($idUjian === '') {
+        return ['success' => false, 'message' => 'ID ujian tidak valid.'];
     }
 
-    return ['success' => true];
+    try {
+        $requestedAttempt = $payload['percobaan_ke'] ?? null;
+        $existingRecord = find_result_record($idUjian, tostr($username), $requestedAttempt);
+        if ($existingRecord === null) {
+            return ['success' => false, 'message' => 'Sesi ujian tidak ditemukan.'];
+        }
+
+        $row = $existingRecord['row'];
+        $status = strtoupper(trim(tostr($row['status'])));
+        if ($status !== 'DRAFT') {
+            return ['success' => false, 'message' => 'Ujian tidak dalam status pengerjaan.'];
+        }
+
+        // Hitung di server: setiap panggilan = satu pelanggaran baru. Angka dari
+        // klien tidak dipercaya agar siswa tidak dapat mengirim 0/angka palsu.
+        $serverCount = max(0, (int) $row['jumlah_pelanggaran']) + 1;
+        db_exec(
+            'UPDATE results SET jumlah_pelanggaran = ? WHERE id_hasil = ?',
+            [$serverCount, tostr($row['id_hasil'])]
+        );
+
+        log_activity(
+            tostr($username),
+            $jenis,
+            'Ujian: ' . $idUjian . ' | Pelanggaran ke-' . $serverCount . ' | ' . $keterangan
+        );
+
+        $policy = violation_policy();
+        $action = 'none';
+        $auto = null;
+        if ($serverCount >= $policy['max']) {
+            if ($policy['action'] === 'auto_blokir') {
+                db_exec(
+                    'UPDATE results SET status = ?, jumlah_pelanggaran = ? WHERE id_hasil = ?',
+                    ['TERBLOKIR', $serverCount, tostr($row['id_hasil'])]
+                );
+                $action = 'blocked';
+                log_activity(tostr($username), 'Auto Blokir Pelanggaran', 'Batas ' . $policy['max'] . ' pelanggaran tercapai pada ujian ' . $idUjian . '.');
+            } elseif ($policy['action'] === 'auto_submit') {
+                $auto = submitExam($username, $token, [
+                    'id_ujian'     => $idUjian,
+                    'answers'      => exam_stored_answers($row),
+                    'violations'   => $serverCount,
+                    'isAutoSubmit' => true,
+                    'reason'       => 'Batas maksimal pelanggaran tercapai',
+                    'percobaan_ke' => (int) $existingRecord['percobaan_ke'],
+                ]);
+                $action = ($auto['success'] ?? false) ? 'submitted' : 'none';
+            } else {
+                $action = 'recorded';
+            }
+        }
+
+        return [
+            'success'        => true,
+            'violations'     => $serverCount,
+            'max_violations' => $policy['max'],
+            'action'         => $action,
+            'score'          => $auto['score'] ?? null,
+        ];
+    } catch (Throwable $e) {
+        error_log('recordViolation: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'Gagal mencatat pelanggaran.'];
+    }
 }
 
 /**
@@ -390,21 +592,44 @@ function submitExam($username, $token, $payload): array
     $payload = is_array($payload) ? $payload : [];
     $idUjian = trim(tostr($payload['id_ujian'] ?? ''));
     $answers = is_array($payload['answers'] ?? null) ? $payload['answers'] : [];
-    $violations = (int) ($payload['violations'] ?? 0);
+    $violations = max(0, (int) ($payload['violations'] ?? 0));
     $isAutoSubmit = (bool) ($payload['isAutoSubmit'] ?? false);
     $reason = tostr($payload['reason'] ?? '') !== '' ? tostr($payload['reason']) : ($isAutoSubmit ? 'Auto Submit Sistem' : 'Selesai Manual');
 
-    try {
-        $requestedAttempt = $payload['percobaan_ke'] ?? null;
-        $existingRecord = find_result_record($idUjian, tostr($username), $requestedAttempt);
+    if ($idUjian === '') {
+        return err('ID ujian tidak valid.');
+    }
 
-        if ($existingRecord !== null && strtoupper(trim(tostr($existingRecord['row']['status']))) === 'SUBMITTED') {
-            return err('Ujian ini sudah Anda kumpulkan sebelumnya.');
+    try {
+        $examRow = db_one('SELECT * FROM exams WHERE TRIM(id_ujian) = ?', [$idUjian]);
+        if (!$examRow) {
+            return err('Ujian tidak ditemukan.');
         }
 
-        $submitAttemptNumber = $existingRecord !== null
-            ? (int) $existingRecord['percobaan_ke']
-            : normalize_exam_attempts($requestedAttempt);
+        $requestedAttempt = $payload['percobaan_ke'] ?? null;
+        $existingRecord = find_result_record($idUjian, tostr($username), $requestedAttempt);
+        if ($existingRecord === null) {
+            return err('Sesi ujian tidak ditemukan. Mulai ujian terlebih dahulu.');
+        }
+
+        $status = strtoupper(trim(tostr($existingRecord['row']['status'])));
+        if ($status === 'SUBMITTED') {
+            return err('Ujian ini sudah Anda kumpulkan sebelumnya.');
+        }
+        if ($status === 'TERBLOKIR') {
+            return err('Ujian Anda sedang diblokir. Hubungi guru/pengawas.');
+        }
+
+        $deadline = exam_result_deadline($examRow, $existingRecord['row']);
+        if (exam_deadline_passed($deadline)) {
+            // Jawaban yang dikirim setelah deadline tidak dipercaya. Nilai
+            // dihitung dari jawaban terakhir yang sudah tersimpan di server.
+            $answers = exam_stored_answers($existingRecord['row']);
+            $isAutoSubmit = true;
+            $reason = 'Melewati batas waktu pengerjaan';
+        }
+
+        $submitAttemptNumber = (int) $existingRecord['percobaan_ke'];
 
         // Paket soal acak milik siswa
         $selectedSoalSet = null;
@@ -425,6 +650,9 @@ function submitExam($username, $token, $payload): array
         }
 
         // Penilaian memakai kunci jawaban terbaru
+        if (strlen((string) json_encode($answers, JSON_UNESCAPED_UNICODE)) > 1048576) {
+            return err('Data jawaban terlalu besar.');
+        }
         $keyMap = [];
         $totalBobot = 0;
         $skorDiperoleh = 0;
@@ -466,18 +694,19 @@ function submitExam($username, $token, $payload): array
 
         if ($existingRecord !== null) {
             db_exec(
-                'UPDATE results SET waktu_submit = ?, jumlah_pelanggaran = ?, nilai_akhir = ?, status = ?, detail_jawaban = ?
+                'UPDATE results SET waktu_submit = ?, jumlah_pelanggaran = ?, nilai_akhir = ?, status = ?, detail_jawaban = ?,
+                    deadline_at = COALESCE(deadline_at, ?)
                  WHERE id_hasil = ?',
-                [$nowStr, $violations, $nilaiAkhir, 'SUBMITTED', $answersJsonStr, tostr($existingRecord['row']['id_hasil'])]
+                [$nowStr, $violations, $nilaiAkhir, 'SUBMITTED', $answersJsonStr, $deadline, tostr($existingRecord['row']['id_hasil'])]
             );
         } else {
             db_exec(
                 'INSERT INTO results (id_hasil, id_ujian, username_siswa, waktu_mulai, waktu_submit, jumlah_pelanggaran,
-                    nilai_akhir, status, detail_jawaban, soal_terpilih, percobaan_ke)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                    nilai_akhir, status, detail_jawaban, soal_terpilih, percobaan_ke, deadline_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                 [
                     new_id('RES'), $idUjian, tostr($username), $nowStr, $nowStr, $violations, $nilaiAkhir,
-                    'SUBMITTED', $answersJsonStr, '', $submitAttemptNumber,
+                    'SUBMITTED', $answersJsonStr, '', $submitAttemptNumber, $deadline,
                 ]
             );
         }
@@ -516,7 +745,7 @@ function submitExam($username, $token, $payload): array
                 : 'Ujian berhasil diselesaikan dan dikirim.',
         ];
     } catch (Throwable $e) {
-        return err('Gagal memproses submit ujian: ' . $e->getMessage());
+        return err('Gagal memproses submit ujian: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -565,7 +794,7 @@ function blockStudentExam($username, $token, $payload): array
 
         return ['success' => true, 'message' => 'Ujian berhasil diblokir.'];
     } catch (Throwable $e) {
-        return err('Gagal memblokir ujian: ' . $e->getMessage());
+        return err('Gagal memblokir ujian: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -586,11 +815,19 @@ function unblockStudentExam($username, $token, $id_ujian, $username_siswa): arra
     }
 
     try {
+        $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$targetExamId]);
+        if (!$examRow) {
+            return err('Ujian tidak ditemukan.');
+        }
+        $bounds = exam_time_bounds($examRow);
+        if ($bounds['end'] !== null && time() > $bounds['end']) {
+            return err('Masa ujian sudah berakhir; blokir tidak dapat dibuka.');
+        }
+
         $callerRole = current_role(tostr($username));
         if ($callerRole !== 'admin') {
             if ($callerRole === 'guru') {
-                $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$targetExamId]);
-                if (!$examRow || !can_manage_exam($examRow, tostr($username))) {
+                if (!can_manage_exam($examRow, tostr($username))) {
                     return err('Anda tidak memiliki hak akses untuk membuka blokir pada ujian ini.');
                 }
             } else {
@@ -607,9 +844,10 @@ function unblockStudentExam($username, $token, $id_ujian, $username_siswa): arra
             return err('Data hasil ujian siswa tidak ditemukan.');
         }
 
+        $newDeadline = exam_compute_deadline($examRow, time());
         db_exec(
-            'UPDATE results SET status = ?, jumlah_pelanggaran = ?, waktu_mulai = ? WHERE id_hasil = ?',
-            ['DRAFT', $resetViolations, now_dt(), tostr($existingRecord['row']['id_hasil'])]
+            'UPDATE results SET status = ?, jumlah_pelanggaran = ?, waktu_mulai = ?, deadline_at = ? WHERE id_hasil = ?',
+            ['DRAFT', $resetViolations, now_dt(), $newDeadline, tostr($existingRecord['row']['id_hasil'])]
         );
 
         log_activity(
@@ -623,6 +861,6 @@ function unblockStudentExam($username, $token, $id_ujian, $username_siswa): arra
             'message' => 'Blokir ujian siswa ' . $targetStudent . ' berhasil dibuka. Siswa kini dapat melanjutkan ujian.',
         ];
     } catch (Throwable $e) {
-        return err('Gagal membuka blokir: ' . $e->getMessage());
+        return err('Gagal membuka blokir: ' . client_error_message($e->getMessage()));
     }
 }

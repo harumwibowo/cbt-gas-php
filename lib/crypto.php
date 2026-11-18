@@ -25,17 +25,26 @@ function app_secret_key(): string
 
     $file = APP_ROOT . '/config/pass.key';
     if (is_file($file)) {
-        $raw = trim((string) @file_get_contents($file));
-        if ($raw !== '') {
-            $key = app_secret_key_derive($raw);
-            return $key;
+        $raw = @file_get_contents($file);
+        if (!is_string($raw) || trim($raw) === '') {
+            throw new RuntimeException(
+                'Kunci enkripsi config/pass.key tidak dapat dibaca. Perbaiki izin berkas '
+                . 'atau set CBT_PASS_KEY. Enkripsi dihentikan agar data tidak rusak.'
+            );
         }
+        $key = app_secret_key_derive(trim($raw));
+        return $key;
     }
 
     $key = random_bytes(32);
-    if (!is_file($file)) {
-        @file_put_contents($file, base64_encode($key) . "\n");
-        @chmod($file, 0600);
+    $tmp = $file . '.tmp-' . bin2hex(random_bytes(4));
+    $written = @file_put_contents($tmp, base64_encode($key) . "\n");
+    if ($written === false || !@chmod($tmp, 0600) || !@rename($tmp, $file)) {
+        @unlink($tmp);
+        throw new RuntimeException(
+            'Kunci enkripsi tidak dapat disimpan ke config/pass.key. '
+            . 'Pastikan folder config dapat ditulis atau set CBT_PASS_KEY.'
+        );
     }
     return $key;
 }
