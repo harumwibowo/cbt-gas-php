@@ -421,73 +421,108 @@ function db_apply_migrations(): void
         }
     }
 
-    db_apply_sql_migrations();
+    // v7-v9 (arsitektur): struktur sudah ada di schema.sql untuk instalasi baru;
+    // blok ini hanya menambahinya pada instalasi lama yang masih di v6.
+    if (!db_migration_applied(7)) {
+        try {
+            $cols = array_column(db_all('SHOW COLUMNS FROM `users`'), 'Field');
+            if (!in_array('two_factor_secret', $cols, true)) {
+                db()->exec('ALTER TABLE users ADD COLUMN `two_factor_secret` VARCHAR(64) NULL');
+            }
+            if (!in_array('must_change_password', $cols, true)) {
+                db()->exec("ALTER TABLE users ADD COLUMN `must_change_password` TINYINT(1) NOT NULL DEFAULT 0");
+            }
+            if (!db_index_exists('answer_audit', 'idx_answer_audit_hasil')) {
+                db()->exec('CREATE TABLE IF NOT EXISTS answer_audit (
+                    id BIGINT NOT NULL AUTO_INCREMENT, id_hasil VARCHAR(40) NOT NULL,
+                    id_soal VARCHAR(40) NOT NULL, jawaban VARCHAR(500) NULL,
+                    changed_at DATETIME NOT NULL, ip VARCHAR(45) NOT NULL DEFAULT "",
+                    PRIMARY KEY (id), KEY idx_answer_audit_hasil (id_hasil, changed_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+            }
+            db_migration_mark(7);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v7 belum selesai: ' . $e->getMessage());
+        }
+    }
+
+    if (!db_migration_applied(8)) {
+        try {
+            $cols = array_column(db_all('SHOW COLUMNS FROM `results`'), 'Field');
+            if (!in_array('idempotency_key', $cols, true)) {
+                db()->exec('ALTER TABLE results ADD COLUMN `idempotency_key` VARCHAR(64) NULL');
+            }
+            if (!db_index_exists('results', 'idx_results_idempotency')) {
+                db()->exec('ALTER TABLE results ADD KEY idx_results_idempotency (`idempotency_key`)');
+            }
+            db_migration_mark(8);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v8 belum selesai: ' . $e->getMessage());
+        }
+    }
+
+    if (!db_migration_applied(9)) {
+        try {
+            db()->exec('CREATE TABLE IF NOT EXISTS exam_tokens (
+                id_ujian VARCHAR(40) NOT NULL, username_siswa VARCHAR(100) NOT NULL,
+                token_hash CHAR(64) NOT NULL DEFAULT "", expires_at DATETIME NOT NULL,
+                used_at DATETIME NULL, created_at DATETIME NOT NULL,
+                PRIMARY KEY (id_ujian, username_siswa), KEY idx_exam_tokens_hash (token_hash)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+            db_exec("INSERT IGNORE INTO settings (kunci, nilai, keterangan) VALUES
+                ('token_per_siswa', 'Tidak', 'Gunakan token sekali pakai per siswa (Ya/Tidak). Kosong = token ujian global')");
+            db_migration_mark(9);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v9 belum selesai: ' . $e->getMessage());
+        }
+    }
 }
 
 /**
- * Jalankan berkas database/migrations/NNNN_*.sql yang belum terpasang.
- *
- * Migrasi v1-v6 masih berupa fungsi PHP di db_apply_migrations(); mulai v7
- * semua migrasi memakai berkas SQL sehingga bisa ditinjau & di-rollback.
- * Runner mengabaikan error "sudah ada" (1050/1060/1061) agar aman diulang.
- */
-function db_apply_sql_migrations(): void
-{
-    $dir = APP_ROOT . '/database/migrations';
-    if (!is_dir($dir)) {
-        return;
-    }
-    $files = glob($dir . '/[0-9][0-9][0-9][0-9]_*.sql') ?: [];
-    $files = array_values(array_filter($files, static fn ($f) => !str_ends_with($f, '.down.sql')));
-    sort($files, SORT_STRING);
-    foreach ($files as $file) {
-        $version = (int) basename($file);
-        if ($version <= 0 || db_migration_applied($version)) {
-            continue;
-        }
-        $sql = (string) file_get_contents($file);
-        $sql = (string) preg_replace('/^\s*--.*$/m', '', $sql);
-        foreach (explode(';', $sql) as $statement) {
-            $statement = trim($statement);
-            if ($statement === '') {
-                continue;
-            }
-            try {
-                db()->exec($statement);
-            } catch (PDOException $e) {
-                $errno = (int) ($e->errorInfo[1] ?? 0);
-                // 1050 tabel ada, 1060 kolom ada, 1061 index ada.
-                if (!in_array($errno, [1050, 1060, 1061], true)) {
-                    error_log('[CBT migration ' . $version . '] ' . $e->getMessage());
-                    throw $e;
-                }
-            }
-        }
-        db_migration_mark($version);
-        error_log('[CBT migration ' . $version . '] diterapkan dari ' . basename($file));
-    }
-}
-
-/**
- * Daftar migrasi SQL yang tersedia + statusnya (dipakai CLI & health check).
+ * Status semua versi migrasi (dipakai CLI & health check).
  */
 function db_migrations_status(): array
 {
-    $dir = APP_ROOT . '/database/migrations';
-    $files = is_dir($dir) ? (glob($dir . '/[0-9][0-9][0-9][0-9]_*.sql') ?: []) : [];
-    $files = array_values(array_filter($files, static fn ($f) => !str_ends_with($f, '.down.sql')));
-    sort($files, SORT_STRING);
     $out = [];
-    foreach ($files as $file) {
-        $version = (int) basename($file);
+    for ($version = 1; $version <= schema_target_version(); $version++) {
         $out[] = [
             'version' => $version,
-            'file'    => basename($file),
+            'file'    => 'v' . $version . ' · database/schema.sql',
             'applied' => db_migration_applied($version),
-            'has_down' => is_file(dirname($file) . '/' . basename($file, '.sql') . '.down.sql'),
         ];
     }
     return $out;
+}
+
+/**
+ * Rollback satu versi (hanya struktur v7-v9; v1-v6 mengandung logika data).
+ * Selalu gunakan backup di storage/backups/ untuk pemulihan penuh.
+ */
+function db_rollback_migration(int $version): void
+{
+    if ($version === 9) {
+        db()->exec('DROP TABLE IF EXISTS exam_tokens');
+        db_exec("DELETE FROM settings WHERE kunci = 'token_per_siswa'");
+    } elseif ($version === 8) {
+        if (db_index_exists('results', 'idx_results_idempotency')) {
+            db()->exec('DROP INDEX idx_results_idempotency ON results');
+        }
+        $cols = array_column(db_all('SHOW COLUMNS FROM `results`'), 'Field');
+        if (in_array('idempotency_key', $cols, true)) {
+            db()->exec('ALTER TABLE results DROP COLUMN idempotency_key');
+        }
+    } elseif ($version === 7) {
+        db()->exec('DROP TABLE IF EXISTS answer_audit');
+        $cols = array_column(db_all('SHOW COLUMNS FROM `users`'), 'Field');
+        foreach (['two_factor_secret', 'must_change_password'] as $col) {
+            if (in_array($col, $cols, true)) {
+                db()->exec("ALTER TABLE users DROP COLUMN `{$col}`");
+            }
+        }
+    } else {
+        throw new InvalidArgumentException('Rollback hanya tersedia untuk versi 7, 8, dan 9.');
+    }
+    db_exec('DELETE FROM schema_migrations WHERE version = ?', [$version]);
 }
 
 /**

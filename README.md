@@ -1,6 +1,6 @@
 # CBT GAS — PHP 8 + MySQL
 
-**Versi rilis:** `1.0.7` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
+**Versi rilis:** `2.0.0` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
 proyek (satu baris, mis. `1.0.3`). Berkas ini ikut tersalin saat pembaruan dari GitHub,
 sehingga label versi di **kartu Pembaruan Aplikasi** dan di **halaman login** otomatis
 berganti. Naikkan isinya setiap kali merilis versi baru.
@@ -699,12 +699,16 @@ jawaban lengkap diambil lewat `getExamResultDetail` saat halaman detail dibuka.
 dipetakan ke HTTP: validasi 422, forbidden 403, not found 404, konflik 409,
 server error 500 — semuanya memakai pesan aman + `X-Request-ID`.
 
-**Migrasi berversi.** Migrasi SQL ada di `database/migrations/NNNN_*.sql`.
+**Skema & migrasi.** `database/schema.sql` adalah **satu-satunya file SQL** dan sudah
+berisi seluruh struktur hingga versi 9 (tabel, kolom, index, setting awal). Instalasi
+baru/install ulang langsung berada di versi skema terbaru. Untuk instalasi lama,
+`lib/db.php::db_apply_migrations()` menambahkan struktur yang belum ada secara
+idempoten (v1–v9), lalu menandai versinya di `schema_migrations`.
 
 ```bash
-php tools/migrate.php status                 # versi & daftar migrasi
-php tools/migrate.php up                     # backup dulu, lalu jalankan migrasi
-php tools/migrate.php rollback 0009          # jalankan 0009_*.down.sql (backup dulu)
+php tools/migrate.php status                 # versi & status semua migrasi
+php tools/migrate.php up                     # backup dulu, lalu samakan skema
+php tools/migrate.php rollback 9             # rollback struktur v9 (backup dulu)
 php tools/backup.php harian                  # backup manual
 ```
 

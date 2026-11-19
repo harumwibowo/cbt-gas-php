@@ -1,7 +1,7 @@
 ================================================================================
 SARAN OPTIMALISASI PERFORMA, PERBAIKAN BUG, DAN PENGEMBANGAN FITUR
 Aplikasi : CBT GAS - Platform Ujian Online (PHP native + MySQL)
-Versi    : 1.0.7 (berkas VERSION)
+Versi    : 2.0.0 (berkas VERSION)
 Tanggal  : 2026-11-19
 Sifat    : dokumen saran. Seluruh item Bagian 1, Bagian 2, DAN Bagian 3 sudah
            diimplementasikan dan ditandai (SELESAI); dari Bagian 4, item 4.7
@@ -1019,11 +1019,13 @@ Saran produksi:
   - Perintah CLI: php tools/migrate.php (up/status/rollback).
   - Hapus DDL dari request path.
 
- IMPLEMENTASI (SELESAI):
-   - database/migrations/0007..0009_*.sql (+ .down.sql) dijalankan sekali oleh
-     tools/migrate.php; runner mengabaikan error 1050/1060/1061 agar idempoten.
-     Migrasi v1-v6 tetap berupa fungsi PHP di db.php (butuh logika data).
-   - CLI: status | up | rollback <versi> | backup | cache:clear | cleanup.
+ IMPLEMENTASI (SELESAI / diperbarui v2.0.0):
+   - Sejak v2.0.0 semua SQL disatukan di database/schema.sql (satu-satunya file
+     SQL). Berisi struktur lengkap v1-v9, sehingga setup awal/install ulang
+     langsung di versi skema terbaru tanpa berkas migrasi terpisah.
+   - lib/db.php::db_apply_migrations() menyimpan migrasi PHP idempoten v1-v9
+     untuk menaikkan instalasi lama, lalu menandai schema_migrations.
+   - CLI: status | up | rollback 7|8|9 | backup | cache:clear | cleanup.
      Rollback menolak v1-v6 dan selalu membuat backup lebih dulu.
    - lib/backup.php: mysqldump + fallback PHP (dipakai migrasi & update aplikasi).
    - Request path tidak menjalankan DDL (terbukti dengan uji schema.sql disembunyikan).

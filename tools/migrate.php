@@ -7,7 +7,7 @@
  *   php tools/migrate.php up            jalankan DDL + migrasi + seed (idempoten)
  *   php tools/migrate.php cache:clear   hapus cache APCu/file aplikasi
  *   php tools/migrate.php cleanup        bersihkan media orphan & log lama (cron)
- *   php tools/migrate.php rollback 0007  jalankan 0007_*.down.sql (dengan backup)
+ *   php tools/migrate.php rollback 9     rollback struktur v9 (dengan backup)
  *   php tools/migrate.php backup         backup database ke storage/backups/
  *
  * Semua perintah menolak dipanggil dari web server (PHP_SAPI harus cli).
@@ -71,29 +71,16 @@ try {
 
         case 'rollback':
             $target = (int) ($argv[2] ?? 0);
-            if ($target < 7) {
-                fwrite(STDERR, "Rollback hanya tersedia untuk migrasi v7 ke atas. "
-                    . "Migrasi v1-v6 mengandung logika data PHP (lihat README folder migrations).\n");
-                exit(1);
-            }
-            $down = APP_ROOT . '/database/migrations/' . str_pad((string) $target, 4, '0', STR_PAD_LEFT);
-            $matches = glob($down . '_*.down.sql') ?: [];
-            if (count($matches) !== 1) {
-                fwrite(STDERR, "Berkas .down.sql untuk versi {$target} tidak ditemukan.\n");
+            if ($target < 7 || $target > 9) {
+                fwrite(STDERR, "Rollback tersedia untuk versi 7, 8, dan 9 saja. "
+                    . "Migrasi v1-v6 mengandung logika data PHP di lib/db.php.\n");
                 exit(1);
             }
             $backup = db_backup('rollback-' . $target);
             if ($backup !== null) {
                 echo "Backup: {$backup}\n";
             }
-            $sql = (string) preg_replace('/^\s*--.*$/m', '', (string) file_get_contents($matches[0]));
-            foreach (explode(';', $sql) as $statement) {
-                $statement = trim($statement);
-                if ($statement !== '') {
-                    db()->exec($statement);
-                }
-            }
-            db_exec('DELETE FROM schema_migrations WHERE version = ?', [$target]);
+            db_rollback_migration($target);
             cbt_cache_delete('cbt.schema.version');
             echo "Rollback v{$target} selesai. Jalankan 'php tools/migrate.php status' untuk verifikasi.\n";
             break;
@@ -109,7 +96,7 @@ try {
 
         default:
             fwrite(STDERR, "Perintah tidak dikenal: {$command}\n");
-            fwrite(STDERR, "Pilihan: status | up | cache:clear\n");
+            fwrite(STDERR, "Pilihan: status | up | cache:clear | backup | cleanup | rollback <7|8|9>\n");
             exit(1);
     }
 } catch (Throwable $e) {

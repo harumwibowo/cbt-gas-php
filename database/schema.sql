@@ -1,7 +1,11 @@
 -- =====================================================================
--- Skema database CBT (MySQL 8)
--- Padanan langsung dari struktur sheet pada Code.gs (SHEET_HEADERS).
--- Bersifat idempotent: aman dijalankan berulang (CREATE TABLE IF NOT EXISTS).
+-- Skema database CBT (MySQL 8) — SATU-SATUNYA file skema (level v9).
+-- Dipakai saat instalasi: setup.php / `php tools/migrate.php up`.
+-- Berisi seluruh tabel + kolom + index hasil migrasi v1-v9, sehingga
+-- instalasi baru langsung berada di versi skema terbaru tanpa berkas
+-- migrasi terpisah. Upgrade dari instalasi lama ditangani oleh
+-- lib/db.php::db_apply_migrations() (v1-v9, idempoten).
+-- Aman dijalankan berulang (CREATE TABLE IF NOT EXISTS).
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS `users` (
@@ -16,6 +20,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `status_aktif` VARCHAR(20)  NOT NULL DEFAULT 'Aktif',
   `sesi`         VARCHAR(50)  NOT NULL DEFAULT '-',
   `tingkat`      VARCHAR(20)  NOT NULL DEFAULT '-',
+  `two_factor_secret`   VARCHAR(64)  NULL COMMENT 'Rahasia TOTP Base32 (2FA opsional Admin/Guru)',
+  `must_change_password` TINYINT(1)  NOT NULL DEFAULT 0,
   `created_at`   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id_user`),
   UNIQUE KEY `uq_users_username` (`username`),
@@ -55,7 +61,8 @@ CREATE TABLE IF NOT EXISTS `exams` (
   `created_at`           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id_ujian`),
   KEY `idx_exams_guru` (`id_guru`),
-  KEY `idx_exams_guru_created` (`id_guru`, `created_at`)
+  KEY `idx_exams_guru_created` (`id_guru`, `created_at`),
+  KEY `idx_exams_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `questions` (
@@ -80,7 +87,8 @@ CREATE TABLE IF NOT EXISTS `questions` (
   `urutan`       INT          NOT NULL DEFAULT 0,
   PRIMARY KEY (`id_soal`),
   KEY `idx_questions_ujian` (`id_ujian`),
-  KEY `idx_questions_teks` (`id_teks`)
+  KEY `idx_questions_teks` (`id_teks`),
+  KEY `idx_questions_exam_order` (`id_ujian`, `urutan`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `teks_ujian` (
@@ -105,6 +113,7 @@ CREATE TABLE IF NOT EXISTS `results` (
   `soal_terpilih`      LONGTEXT     NULL,
   `percobaan_ke`       INT          NOT NULL DEFAULT 1,
   `deadline_at`        DATETIME     NULL,
+  `idempotency_key`    VARCHAR(64)  NULL,
   PRIMARY KEY (`id_hasil`),
   UNIQUE KEY `uq_result_attempt` (`id_ujian`, `username_siswa`, `percobaan_ke`),
   KEY `idx_results_ujian` (`id_ujian`),
@@ -112,7 +121,20 @@ CREATE TABLE IF NOT EXISTS `results` (
   KEY `idx_results_ujian_siswa` (`id_ujian`, `username_siswa`),
   KEY `idx_results_exam_status` (`id_ujian`, `status`),
   KEY `idx_results_student` (`username_siswa`, `id_ujian`),
-  KEY `idx_results_deadline` (`deadline_at`)
+  KEY `idx_results_deadline` (`deadline_at`),
+  KEY `idx_results_idempotency` (`idempotency_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Audit jawaban append-only (v7): mencatat perubahan jawaban per butir.
+CREATE TABLE IF NOT EXISTS `answer_audit` (
+  `id`         BIGINT       NOT NULL AUTO_INCREMENT,
+  `id_hasil`   VARCHAR(40)  NOT NULL,
+  `id_soal`    VARCHAR(40)  NOT NULL,
+  `jawaban`    VARCHAR(500) NULL,
+  `changed_at` DATETIME     NOT NULL,
+  `ip`         VARCHAR(45)  NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`),
+  KEY `idx_answer_audit_hasil` (`id_hasil`, `changed_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `logs` (
@@ -127,6 +149,8 @@ CREATE TABLE IF NOT EXISTS `logs` (
   PRIMARY KEY (`id`),
   KEY `idx_logs_user` (`username`),
   KEY `idx_logs_jenis` (`jenis_kejadian`),
+  KEY `idx_logs_time` (`timestamp`),
+  KEY `idx_logs_type_time` (`jenis_kejadian`, `timestamp`),
   KEY `idx_logs_exam_time` (`exam_id`, `timestamp`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -184,3 +208,19 @@ CREATE TABLE IF NOT EXISTS `media` (
   PRIMARY KEY (`id_media`),
   KEY `idx_media_hash` (`hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Token ujian sekali pakai per siswa (v9, aktif lewat token_per_siswa = Ya).
+CREATE TABLE IF NOT EXISTS `exam_tokens` (
+  `id_ujian`       VARCHAR(40)  NOT NULL,
+  `username_siswa` VARCHAR(100) NOT NULL,
+  `token_hash`     CHAR(64)     NOT NULL DEFAULT '',
+  `expires_at`     DATETIME     NOT NULL,
+  `used_at`        DATETIME     NULL,
+  `created_at`     DATETIME     NOT NULL,
+  PRIMARY KEY (`id_ujian`, `username_siswa`),
+  KEY `idx_exam_tokens_hash` (`token_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pengaturan yang ditambahkan oleh migrasi v9 (aman dijalankan ulang).
+INSERT IGNORE INTO `settings` (`kunci`, `nilai`, `keterangan`)
+VALUES ('token_per_siswa', 'Tidak', 'Gunakan token sekali pakai per siswa (Ya/Tidak). Kosong = token ujian global');
