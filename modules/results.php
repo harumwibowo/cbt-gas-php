@@ -83,7 +83,7 @@ function can_manage_exam(array $exam, string $username): bool
 /**
  * Rekapitulasi nilai satu ujian (padanan getExamResults()).
  */
-function getExamResults($username, $token, $id_ujian): array
+function getExamResults($username, $token, $id_ujian, $includeDetail = true): array
 {
     if (!validate_session($username, $token)) {
         return err('Sesi tidak valid.');
@@ -115,7 +115,7 @@ function getExamResults($username, $token, $id_ujian): array
 
         // Ambil baris hasil (satu ujian atau semua bila id kosong)
         if ($targetExamId !== '') {
-            $rows = db_all('SELECT * FROM results WHERE TRIM(id_ujian) = ? ORDER BY id_hasil ASC', [$targetExamId]);
+            $rows = db_all('SELECT * FROM results WHERE id_ujian = ? ORDER BY id_hasil ASC', [$targetExamId]);
         } else {
             $rows = db_all('SELECT * FROM results ORDER BY id_hasil ASC');
         }
@@ -142,8 +142,10 @@ function getExamResults($username, $token, $id_ujian): array
                 'jumlah_pelanggaran' => (int) $row['jumlah_pelanggaran'],
                 'nilai_akhir'        => (float) $row['nilai_akhir'],
                 'status'             => tostr($row['status']),
-                'detail_jawaban'     => tostr($row['detail_jawaban']),
-                'soal_terpilih'      => tostr($row['soal_terpilih']),
+                // The LONGTEXT jawaban only dikirim saat benar-benar dibutuhkan
+                // (halaman detail). Rekap daftar memakai $includeDetail = false.
+                'detail_jawaban'     => $includeDetail ? tostr($row['detail_jawaban']) : '',
+                'soal_terpilih'      => $includeDetail ? tostr($row['soal_terpilih']) : '',
                 'percobaan_ke'       => $attemptNo,
             ];
 
@@ -207,8 +209,8 @@ function getExamResults($username, $token, $id_ujian): array
                 'nilai_akhir'                => $bestItem['nilai_akhir'],
                 'nilai_tertinggi'            => $bestItem['nilai_akhir'],
                 'status'                     => $bestItem['status'],
-                'detail_jawaban'             => $bestItem['detail_jawaban'],
-                'soal_terpilih'              => $bestItem['soal_terpilih'],
+                'detail_jawaban'             => $includeDetail ? $bestItem['detail_jawaban'] : '',
+                'soal_terpilih'              => $includeDetail ? $bestItem['soal_terpilih'] : '',
                 'percobaan_ke'               => $bestItem['percobaan_ke'],
                 'jumlah_percobaan_dilakukan' => $attemptCount,
             ];
@@ -280,6 +282,52 @@ function getExamResults($username, $token, $id_ujian): array
     }
 }
 
+/**
+ * Ambil jawaban lengkap SATU hasil ujian.
+ *
+ * Dipanggil hanya ketika guru/admin membuka halaman detail jawaban, sehingga
+ * rekap daftar tidak perlu mengirim LONGTEXT detail_jawaban untuk semua siswa.
+ */
+function getExamResultDetail($username, $token, $id_hasil): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi tidak valid.');
+    }
+    $role = current_role(tostr($username));
+    if (!in_array($role, ['admin', 'guru'], true)) {
+        return err('Akses ditolak. Hanya Admin atau Guru yang dapat melihat jawaban.');
+    }
+
+    try {
+        $row = db_one(
+            'SELECT id_hasil, id_ujian, username_siswa, detail_jawaban, soal_terpilih
+             FROM results WHERE id_hasil = ? LIMIT 1',
+            [trim(tostr($id_hasil))]
+        );
+        if (!$row) {
+            return err('Hasil ujian tidak ditemukan.');
+        }
+        if ($role === 'guru') {
+            $exam = db_one('SELECT * FROM exams WHERE id_ujian = ?', [tostr($row['id_ujian'])]);
+            if (!$exam || !can_manage_exam($exam, tostr($username))) {
+                return err('Anda tidak memiliki hak akses untuk melihat jawaban ini.');
+            }
+        }
+        return [
+            'success' => true,
+            'detail'  => [
+                'id_hasil'       => tostr($row['id_hasil']),
+                'id_ujian'       => tostr($row['id_ujian']),
+                'username_siswa' => tostr($row['username_siswa']),
+                'detail_jawaban' => tostr($row['detail_jawaban']),
+                'soal_terpilih'  => tostr($row['soal_terpilih']),
+            ],
+        ];
+    } catch (Throwable $e) {
+        return err('Gagal memuat detail jawaban: ' . client_error_message($e->getMessage()));
+    }
+}
+
 /** Hapus seluruh hasil ujian seorang siswa. */
 function deleteStudentExamResult($username, $token, $id_ujian, $username_siswa): array
 {
@@ -295,7 +343,7 @@ function deleteStudentExamResult($username, $token, $id_ujian, $username_siswa):
 
     try {
         $deleted = db_exec(
-            'DELETE FROM results WHERE TRIM(id_ujian) = ? AND LOWER(TRIM(username_siswa)) = ?',
+            'DELETE FROM results WHERE id_ujian = ? AND username_siswa = ?',
             [$targetExamId, $targetUser]
         );
         if ($deleted === 0) {
@@ -331,7 +379,7 @@ function getStudentViolations($username, $token, $id_ujian, $username_siswa): ar
         $perAttempt = [];
         $rows = db_all(
             'SELECT percobaan_ke, jumlah_pelanggaran FROM results
-             WHERE TRIM(id_ujian) = ? AND LOWER(TRIM(username_siswa)) = ?',
+             WHERE id_ujian = ? AND username_siswa = ?',
             [$targetExamId, $targetUser]
         );
         $attemptViolMap = [];
@@ -354,13 +402,13 @@ function getStudentViolations($username, $token, $id_ujian, $username_siswa): ar
         $logRows = db_all(
             "SELECT `timestamp`, username, jenis_kejadian, keterangan
              FROM logs
-             WHERE LOWER(TRIM(username)) = ?
+             WHERE username = ?
                AND keterangan LIKE ?
-               AND (LOWER(jenis_kejadian) LIKE '%violation%'
-                    OR LOWER(jenis_kejadian) LIKE '%tab%'
-                    OR LOWER(jenis_kejadian) LIKE '%fullscreen%'
-                    OR LOWER(keterangan) LIKE '%pelanggaran%'
-                    OR LOWER(jenis_kejadian) LIKE '%auto submit%')
+               AND (jenis_kejadian LIKE '%violation%'
+                    OR jenis_kejadian LIKE '%tab%'
+                    OR jenis_kejadian LIKE '%fullscreen%'
+                    OR keterangan LIKE '%pelanggaran%'
+                    OR jenis_kejadian LIKE '%auto submit%')
              ORDER BY id ASC",
             [$targetUser, '%' . $targetExamId . '%']
         );
@@ -422,7 +470,7 @@ function regradeExamResults($username, $token, $id_ujian): array
         $skipped = 0;
         $affectedStudents = [];
 
-        $rows = db_all('SELECT * FROM results WHERE TRIM(id_ujian) = ?', [$targetExamId]);
+        $rows = db_all('SELECT * FROM results WHERE id_ujian = ?', [$targetExamId]);
         foreach ($rows as $row) {
             $rowStatus = strtoupper(trim(tostr($row['status'])));
             if ($rowStatus !== 'SUBMITTED') {

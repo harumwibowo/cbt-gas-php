@@ -33,6 +33,16 @@ define('CBT_DB_FROM_ENV', getenv('CBT_DB_HOST') !== false || getenv('CBT_DB_NAME
 define('APP_NAME', 'CBT GAS - Platform Ujian Online');
 define('APP_TIMEZONE', 'Asia/Jakarta');
 
+/**
+ * Versi skema terbaru yang dikenal aplikasi.
+ *
+ * ensure_schema() hanya menjalankan satu query ringan untuk membandingkan nilai
+ * ini dengan schema_migrations. DDL/seed penuh dipindah ke schema_bootstrap()
+ * yang hanya dipanggil oleh setup.php dan tools/migrate.php.
+ * Naikkan nilai ini setiap kali menambah migrasi di lib/db.php.
+ */
+define('CBT_SCHEMA_VERSION', 9);
+
 /** Batas ukuran berkas gambar yang diunggah (byte). */
 define('MAX_UPLOAD_BYTES', 8 * 1024 * 1024); // 8 MB
 
@@ -56,12 +66,19 @@ error_reporting(E_ALL & ~E_DEPRECATED);
 /** Path root aplikasi */
 define('APP_ROOT', dirname(__DIR__));
 
+require_once APP_ROOT . '/lib/cache.php';
+require_once APP_ROOT . '/lib/exceptions.php';
 require_once APP_ROOT . '/lib/db.php';
+require_once APP_ROOT . '/lib/backup.php';
+require_once APP_ROOT . '/lib/maintenance.php';
 require_once APP_ROOT . '/lib/helpers.php';
 require_once APP_ROOT . '/lib/security.php';
+require_once APP_ROOT . '/lib/observability.php';
 require_once APP_ROOT . '/lib/version.php';
 require_once APP_ROOT . '/lib/crypto.php';
 require_once APP_ROOT . '/lib/auth.php';
+require_once APP_ROOT . '/lib/totp.php';
+require_once APP_ROOT . '/lib/session_cookie.php';
 require_once APP_ROOT . '/lib/settings.php';
 require_once APP_ROOT . '/lib/setup.php';
 

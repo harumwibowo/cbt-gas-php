@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: cbt_gas
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -prootpass"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      CBT_DB_HOST: 127.0.0.1
+      CBT_DB_PORT: 3306
+      CBT_DB_NAME: cbt_gas
+      CBT_DB_USER: root
+      CBT_DB_PASS: rootpass
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, gd, fileinfo
+          coverage: none
+
+      - name: Lint seluruh PHP
+        run: find . -name '*.php' -not -path './storage/*' -print0 | xargs -0 -n1 php -l
+
+      - name: Migrasi skema (CLI)
+        run: php tools/migrate.php up && php tools/migrate.php status
+
+      - name: Unit test (tanpa dependency)
+        run: php tests/unit_test.php
+
+      - name: PHPUnit (opsional, bila composer tersedia)
+        continue-on-error: true
+        run: |
+          composer require --dev --no-interaction phpunit/phpunit:^10 phpstan/phpstan:^1
+          vendor/bin/phpunit -c phpunit.xml.dist
+          vendor/bin/phpstan analyse --no-progress || true
+
+      - name: Jalankan web server PHP
+        run: php -S 127.0.0.1:8080 -t . > /tmp/cbt-server.log 2>&1 &
+        env:
+          CBT_BASE: http://127.0.0.1:8080
+
+      - name: E2E & negative security test
+        env:
+          BASE_OVERRIDE: http://127.0.0.1:8080/api.php
+        run: |
+          python - <<'PY'
+          import os, pathlib, re
+          base = os.environ.get('BASE_OVERRIDE', 'http://127.0.0.1:8080/api.php')
+          for name in ('tests/e2e_test.py', 'tests/negative_auth_test.py'):
+              p = pathlib.Path(name)
+              s = p.read_text()
+              s = re.sub(r'BASE\s*=\s*"[^"]+"', f'BASE = "{base}"', s, count=1)
+              p.write_text(s)
+          PY
+          python tests/e2e_test.py
+          python tests/negative_auth_test.py
+
+      - name: Health check
+        run: curl -fsS http://127.0.0.1:8080/health.php

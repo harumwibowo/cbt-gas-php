@@ -39,7 +39,7 @@ try {
 
 // ---------------------------------------------------------------- reset manual
 if ($resetUser !== null) {
-    $user = db_one('SELECT * FROM users WHERE LOWER(TRIM(username)) = ?', [strtolower(trim($resetUser))]);
+    $user = db_one('SELECT * FROM users WHERE username = ?', [strtolower(trim($resetUser))]);
     if (!$user) {
         fwrite(STDERR, "Pengguna '{$resetUser}' tidak ditemukan.\n");
         exit(1);

@@ -1,6 +1,7 @@
 <?php
 /**
- * Modul guru/admin: pengelolaan ujian (padanan modul 6 pada Code.gs).
+ * Modul guru/admin: pengelolaan ujian (padanan modul 6 pada Code.gs)
+ * + generator token pribadi sekali pakai (Bagian 3.4).
  */
 declare(strict_types=1);
 
@@ -51,7 +52,7 @@ function submitted_counts(): array
 {
     $counts = [];
     $rows = db_all(
-        "SELECT id_ujian, COUNT(DISTINCT LOWER(TRIM(username_siswa))) AS total
+        "SELECT id_ujian, COUNT(DISTINCT username_siswa) AS total
          FROM results WHERE status = 'SUBMITTED' GROUP BY id_ujian"
     );
     foreach ($rows as $row) {
@@ -343,5 +344,61 @@ function deleteExam($username, $token, $id_ujian): array
             db()->rollBack();
         }
         return err('Gagal menghapus ujian: ' . client_error_message($e->getMessage()));
+    }
+}
+
+/**
+ * Buat token sekali pakai per siswa untuk sebuah ujian (Bagian 3.4).
+ * Token dikembalikan PLAIN TEXT sekali saja; database hanya menyimpan hash.
+ * Aktifkan lewat pengaturan token_per_siswa = Ya.
+ */
+function generateStudentTokens($username, $token, $idUjian, $usernames = [], $ttlMinutes = 120): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi tidak valid.');
+    }
+    $role = current_role(tostr($username));
+    if (!in_array($role, ['admin', 'guru'], true)) {
+        return err('Akses ditolak. Hanya Admin atau Guru.');
+    }
+    $examId = trim(tostr($idUjian));
+    if ($examId === '') {
+        return err('ID ujian wajib diisi.');
+    }
+    try {
+        $exam = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$examId]);
+        if (!$exam) {
+            return err('Ujian tidak ditemukan.');
+        }
+        if ($role === 'guru' && !can_manage_exam($exam, tostr($username))) {
+            return err('Anda bukan pemilik ujian ini.');
+        }
+        $list = is_array($usernames) ? $usernames : split_list($usernames);
+        $ttl = max(5, min(10080, (int) $ttlMinutes));
+        $expires = date('Y-m-d H:i:s', time() + ($ttl * 60));
+        $now = now_dt();
+        $tokens = [];
+        foreach ($list as $entry) {
+            $uname = strtolower(trim(tostr($entry)));
+            if ($uname === '' || !is_valid_username($uname)) {
+                continue;
+            }
+            $plain = 'TKN-' . strtoupper(bin2hex(random_bytes(6)));
+            db_exec(
+                'INSERT INTO exam_tokens (id_ujian, username_siswa, token_hash, expires_at, used_at, created_at)
+                 VALUES (?,?,?,?,NULL,?)
+                 ON DUPLICATE KEY UPDATE token_hash = VALUES(token_hash), expires_at = VALUES(expires_at),
+                     used_at = NULL, created_at = VALUES(created_at)',
+                [$examId, $uname, hash('sha256', $plain), $expires, $now]
+            );
+            $tokens[] = ['username' => $uname, 'token' => $plain];
+        }
+        if (empty($tokens)) {
+            return err('Tidak ada username siswa yang valid.');
+        }
+        log_activity(tostr($username), 'Buat Token Siswa', count($tokens) . ' token pribadi dibuat untuk ujian ' . $examId . '.');
+        return ['success' => true, 'tokens' => $tokens, 'expires_at' => $expires, 'count' => count($tokens)];
+    } catch (Throwable $e) {
+        return err('Gagal membuat token siswa: ' . client_error_message($e->getMessage()));
     }
 }

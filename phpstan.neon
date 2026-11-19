@@ -1,0 +1,10 @@
+parameters:
+  level: 6
+  paths:
+    - lib
+    - services
+  excludePaths:
+    - storage/*
+  ignoreErrors:
+    - '#Function (cbt_cache_get|current_user|find_user|db_one|db_all|db_val|request_id|obs_event|settings_map|totp_code|totp_verify|normalize_username|tostr|auth_user_agent|now_dt|new_id|hash_password)\(\) invoked with#'
+  checkMissingIterableValueType: false

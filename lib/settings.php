@@ -22,25 +22,45 @@ function settings_defaults(): array
         'tindakan_pelanggaran'     => 'auto_submit',
         'gemini_api_key'           => '',
         'gemini_model'             => 'gemini-2.0-flash',
+        'token_per_siswa'          => 'Tidak',
     ];
 }
 
 /**
  * Ambil seluruh pengaturan sebagai array asosiatif (kunci huruf kecil).
- * Hasil di-cache per request; gunakan $refresh setelah menulis pengaturan.
+ *
+ * Cache tiga lapis:
+ *   1. statis per request (tercepat, dipakai puluhan helper dalam satu request),
+ *   2. APCu antar request (60 detik) via cbt_cache_get/set,
+ *   3. fallback file di storage/cache/ bila APCu tidak tersedia.
+ *
+ * `$refresh = true` memaksa baca database dan menghapus cache antar request.
+ * Dipanggil otomatis oleh save_settings(), update.php, dan gemini.php setelah
+ * menulis tabel settings.
  */
 function settings_map(bool $refresh = false): array
 {
     static $cache = null;
     if ($refresh) {
         $cache = null;
+        cbt_cache_delete('cbt.settings.map');
     }
     if ($cache !== null) {
         return $cache;
     }
 
+    if (!$refresh) {
+        $cached = cbt_cache_get('cbt.settings.map');
+        if (is_array($cached)) {
+            $cache = $cached;
+            return $cache;
+        }
+    }
+
     $settings = settings_defaults();
     try {
+        // kunci sudah dinormalisasi saat ditulis (migrasi v5), jadi tidak ada
+        // LOWER()/TRIM() di sini dan primary key settings tetap terpakai.
         $rows = db_all('SELECT kunci, nilai FROM settings');
         foreach ($rows as $row) {
             $key = strtolower(trim((string) $row['kunci']));
@@ -52,6 +72,7 @@ function settings_map(bool $refresh = false): array
         error_log('Gagal membaca settings: ' . $e->getMessage());
     }
     $cache = $settings;
+    cbt_cache_set('cbt.settings.map', $settings, 60);
     return $settings;
 }
 
@@ -110,7 +131,7 @@ function get_allowed_student_browsers(): string
 function enforce_student_session_limit(int $limit): int
 {
     $limit = max(1, min(50, $limit));
-    $rows = db_all("SELECT username FROM users WHERE LOWER(TRIM(role)) = 'siswa'");
+    $rows = db_all("SELECT username FROM users WHERE role = 'siswa'");
     $trimmed = 0;
     foreach ($rows as $row) {
         $trimmed += session_trim_to(tostr($row['username']), $limit);
@@ -136,6 +157,7 @@ function settings_descriptions(): array
         'dynamic_watermark'        => 'Tampilkan watermark identitas siswa melayang di area soal (Ya/Tidak)',
         'gemini_api_key'           => 'Google Gemini API Key untuk fitur generate soal AI',
         'gemini_model'             => 'Model Gemini yang digunakan untuk generate konten',
+        'token_per_siswa'          => 'Gunakan token sekali pakai per siswa (Ya/Tidak). Kosong = token ujian global',
     ];
 }
 

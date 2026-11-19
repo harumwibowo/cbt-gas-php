@@ -9,8 +9,10 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/exceptions.php';
+
 /** Exception khusus agar api.php dapat membalas HTTP 403. */
-class RbacDenied extends RuntimeException
+class RbacDenied extends ForbiddenException
 {
 }
 
@@ -21,6 +23,9 @@ function rbac_public_actions(): array
         'login',
         'getsettings',
         'getsessionstatus',
+        // verify2fa diproteksi oleh challenge sekali pakai + kode TOTP,
+        // bukan sesi (belum ada token sebelum 2FA selesai).
+        'verify2fa',
     ];
 }
 
@@ -52,6 +57,7 @@ function rbac_staff_actions(): array
         'getteacherexams',
         'saveexam',
         'deleteexam',
+        'generatestudenttokens',
         'getexamquestions',
         'savequestion',
         'deletequestion',
@@ -61,10 +67,14 @@ function rbac_staff_actions(): array
         'saveexamtext',
         'deleteexamtext',
         'getexamresults',
+        'getexamresultdetail',
         'deletestudentexamresult',
         'getstudentviolations',
         'regradeexamresults',
         'unblockstudentexam',
+        'setup2fa',
+        'confirm2fa',
+        'disable2fa',
         'getgeminimodels',
         'testgeminiconnection',
         'generatequestionswithgemini',
@@ -89,7 +99,9 @@ function rbac_student_actions(): array
 function rbac_role(string $username): string
 {
     try {
-        $row = db_one('SELECT role, status_aktif FROM users WHERE LOWER(TRIM(username)) = ? LIMIT 1', [strtolower(trim($username))]);
+        // Memakai cache user per request agar RBAC tidak menambah SELECT users
+        // ketiga kalinya dalam satu action (lihat current_user()).
+        $row = current_user($username);
         if (!$row) {
             return '';
         }
@@ -169,6 +181,7 @@ function rbac_exam_id_from_args(string $action, array $args): string
         case 'savebulkquestions':
             return $arg2;
         case 'deleteexam':
+        case 'generatestudenttokens':
         case 'getexamquestions':
         case 'getexamtexts':
         case 'getexamresults':

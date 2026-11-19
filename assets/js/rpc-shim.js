@@ -32,9 +32,19 @@
       }
     };
 
+    // CSRF double-submit: baca cookie (bukan HttpOnly) lalu kirim sebagai header.
+    var headers = { 'Content-Type': 'application/json' };
+    var csrf = '';
+    document.cookie.split(';').some(function (item) {
+      var pair = item.trim().split('=');
+      if (pair[0] === 'cbt_csrf') { csrf = decodeURIComponent(pair.slice(1).join('=')); return true; }
+      return false;
+    });
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+
     fetch(API_URL + '?action=' + encodeURIComponent(action), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers,
       body: JSON.stringify({ action: action, args: args }),
       credentials: 'same-origin',
       cache: 'no-store',

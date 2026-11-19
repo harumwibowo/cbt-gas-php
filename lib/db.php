@@ -40,9 +40,16 @@ function db(): PDO
     return $pdo;
 }
 
+/** Hitung query untuk metrik observability (Bagian 3.5). */
+function db_query_count_inc(): void
+{
+    $GLOBALS['CBT_QUERY_COUNT'] = (int) ($GLOBALS['CBT_QUERY_COUNT'] ?? 0) + 1;
+}
+
 /** Ambil semua baris. */
 function db_all(string $sql, array $params = []): array
 {
+    db_query_count_inc();
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll();
@@ -51,6 +58,7 @@ function db_all(string $sql, array $params = []): array
 /** Ambil satu baris (atau null). */
 function db_one(string $sql, array $params = []): ?array
 {
+    db_query_count_inc();
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     $row = $stmt->fetch();
@@ -60,6 +68,7 @@ function db_one(string $sql, array $params = []): ?array
 /** Ambil satu nilai skalar. */
 function db_val(string $sql, array $params = [], $default = null)
 {
+    db_query_count_inc();
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     $val = $stmt->fetchColumn();
@@ -69,6 +78,7 @@ function db_val(string $sql, array $params = [], $default = null)
 /** Jalankan INSERT/UPDATE/DELETE, kembalikan jumlah baris terpengaruh. */
 function db_exec(string $sql, array $params = []): int
 {
+    db_query_count_inc();
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     return $stmt->rowCount();
@@ -81,10 +91,62 @@ function db_last_id(): int
 }
 
 /**
- * Buat tabel & kolom yang belum ada (padanan idempotent CreateDb()).
- * Dipanggil sekali per request oleh api.php/index.php secara ringan (cache statis).
+ * Versi skema target (dari config, dengan fallback untuk pemakaian CLI mandiri).
+ */
+function schema_target_version(): int
+{
+    return defined('CBT_SCHEMA_VERSION') ? (int) CBT_SCHEMA_VERSION : 9;
+}
+
+/**
+ * Pemeriksaan skema ringan pada jalur request.
+ *
+ * TIDAK menjalankan CREATE TABLE/SHOW COLUMNS/seed lagi. Cukup satu query
+ * SELECT MAX(version) dari schema_migrations (di-cache singkat via APCu/file),
+ * lalu bandingkan dengan CBT_SCHEMA_VERSION. Bootstrap penuh hanya terjadi
+ * sekali bila skema belum ada/tertinggal, misalnya setelah instalasi baru.
  */
 function ensure_schema(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+
+    $cached = cbt_cache_get('cbt.schema.version');
+    if (is_numeric($cached) && (int) $cached >= schema_target_version()) {
+        $done = true;
+        return;
+    }
+
+    $version = null;
+    try {
+        $version = db_val('SELECT MAX(version) FROM schema_migrations', [], null);
+    } catch (Throwable $e) {
+        // Tabel schema_migrations belum ada -> instalasi perlu bootstrap penuh.
+        error_log('[CBT schema] tabel versi belum tersedia: ' . $e->getMessage());
+    }
+
+    if ($version !== null && (int) $version >= schema_target_version()) {
+        cbt_cache_set('cbt.schema.version', (int) $version, 300);
+        $done = true;
+        return;
+    }
+
+    // Fallback satu kali untuk instalasi lama/fresh. Jalur normal seharusnya
+    // sudah menjalankan migrasi lewat setup.php atau tools/migrate.php.
+    schema_bootstrap();
+    $done = true;
+}
+
+/**
+ * Instalasi/migrasi skema penuh (DDL + penyesuaian kolom + seed).
+ *
+ * Hanya dipanggil dari setup.php (instalasi via wizard) dan tools/migrate.php.
+ * Jangan pernah memanggil fungsi ini dari api.php, index.php, upload.php,
+ * apalagi media.php: DDL memicu metadata lock dan mahal saat ujian serentak.
+ */
+function schema_bootstrap(): void
 {
     static $done = false;
     if ($done) {
@@ -132,6 +194,11 @@ function ensure_schema(): void
 
     db_apply_migrations();
     seed_defaults();
+
+    // Simpan versi hasil bootstrap apa adanya. Bila sebagian migrasi gagal,
+    // request berikutnya akan mencoba lagi (tidak ditandai sukses palsu).
+    $actual = db_val('SELECT MAX(version) FROM schema_migrations', [], 0);
+    cbt_cache_set('cbt.schema.version', (int) $actual, 300);
     $done = true;
 }
 
@@ -265,6 +332,162 @@ function db_apply_migrations(): void
             error_log('[CBT schema] migrasi v4 belum selesai: ' . $e->getMessage());
         }
     }
+
+    // ---- v5: normalisasi data lama + index pendukung (optimasi 2.3) ----------
+    // Setelah data dinormalisasi, query cukup memakai `kolom = ?`. Collation
+    // utf8mb4_unicode_ci sudah case-insensitive dan VARCHAR mengabaikan spasi
+    // akhir, sehingga LOWER()/TRIM() tidak lagi diperlukan (dan tidak membatalkan
+    // penggunaan index).
+    if (!db_migration_applied(5)) {
+        try {
+            // UPDATE IGNORE: bila ada benturan pada kunci unik, baris lama
+            // dilewati daripada seluruh migrasi gagal.
+            $normalize = [
+                'UPDATE IGNORE users SET username = LOWER(TRIM(username)) WHERE username <> LOWER(TRIM(username))',
+                "UPDATE users SET role = LOWER(TRIM(role)) WHERE role <> LOWER(TRIM(role))",
+                "UPDATE users SET status_aktif = LOWER(TRIM(status_aktif)) WHERE status_aktif <> LOWER(TRIM(status_aktif))",
+                'UPDATE sessions SET username = LOWER(TRIM(username)) WHERE username <> LOWER(TRIM(username))',
+                'UPDATE IGNORE results SET username_siswa = LOWER(TRIM(username_siswa)) WHERE username_siswa <> LOWER(TRIM(username_siswa))',
+                'UPDATE results SET id_ujian = TRIM(id_ujian) WHERE id_ujian <> TRIM(id_ujian)',
+                'UPDATE IGNORE exams SET id_ujian = TRIM(id_ujian) WHERE id_ujian <> TRIM(id_ujian)',
+                "UPDATE exams SET id_guru = LOWER(TRIM(id_guru)) WHERE id_guru <> LOWER(TRIM(id_guru))",
+                'UPDATE questions SET id_ujian = TRIM(id_ujian) WHERE id_ujian <> TRIM(id_ujian)',
+                "UPDATE questions SET id_teks = TRIM(id_teks) WHERE id_teks <> TRIM(id_teks)",
+                'UPDATE logs SET username = LOWER(TRIM(username)) WHERE username <> LOWER(TRIM(username))',
+                'UPDATE IGNORE settings SET kunci = LOWER(TRIM(kunci)) WHERE kunci <> LOWER(TRIM(kunci))',
+            ];
+            foreach ($normalize as $sql) {
+                try {
+                    db()->exec($sql);
+                } catch (Throwable $e) {
+                    error_log('[CBT schema] normalisasi v5 dilewati: ' . $e->getMessage());
+                }
+            }
+
+            $indexes = [
+                'results' => [
+                    'idx_results_student'  => '(username_siswa, id_ujian)',
+                    'idx_results_deadline' => '(deadline_at)',
+                ],
+                'exams' => [
+                    'idx_exams_guru_created' => '(id_guru, created_at)',
+                ],
+                'users' => [
+                    'idx_users_role_status' => '(role, status_aktif)',
+                ],
+                // Dedup hash sudah dijamin media_store_blob(); index biasa cukup
+                // untuk pencarian cepat tanpa menghapus baris lama yang masih
+                // dirujuk oleh soal/logo.
+                'media' => [
+                    'idx_media_hash' => '(hash)',
+                ],
+            ];
+            foreach ($indexes as $table => $defs) {
+                foreach ($defs as $name => $cols) {
+                    if (!db_index_exists($table, $name)) {
+                        db()->exec('ALTER TABLE `' . $table . '` ADD KEY `' . $name . '` ' . $cols);
+                    }
+                }
+            }
+            db_migration_mark(5);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v5 belum selesai: ' . $e->getMessage());
+        }
+    }
+
+    // ---- v6: log pelanggaran terstruktur + retensi (optimasi 2.10) -----------
+    if (!db_migration_applied(6)) {
+        try {
+            $existing = array_column(db_all('SHOW COLUMNS FROM `logs`'), 'Field');
+            if (!in_array('exam_id', $existing, true)) {
+                db()->exec('ALTER TABLE logs ADD COLUMN `exam_id` VARCHAR(40) NULL AFTER `keterangan`');
+            }
+            if (!in_array('ip', $existing, true)) {
+                db()->exec("ALTER TABLE logs ADD COLUMN `ip` VARCHAR(45) NOT NULL DEFAULT '' AFTER `exam_id`");
+            }
+            if (!in_array('user_agent', $existing, true)) {
+                db()->exec("ALTER TABLE logs ADD COLUMN `user_agent` VARCHAR(255) NOT NULL DEFAULT '' AFTER `ip`");
+            }
+            if (!db_index_exists('logs', 'idx_logs_exam_time')) {
+                db()->exec('ALTER TABLE logs ADD KEY idx_logs_exam_time (`exam_id`, `timestamp`)');
+            }
+            // Isi exam_id dari keterangan lama bila memungkinkan (format:
+            // "Ujian: MED/... | ..."). Tidak menghapus baris apa pun.
+            db()->exec("UPDATE logs SET exam_id = SUBSTRING_INDEX(SUBSTRING_INDEX(keterangan, ' | ', 1), 'Ujian: ', -1)
+                        WHERE exam_id IS NULL AND keterangan LIKE 'Ujian: %'");
+            db_migration_mark(6);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v6 belum selesai: ' . $e->getMessage());
+        }
+    }
+
+    db_apply_sql_migrations();
+}
+
+/**
+ * Jalankan berkas database/migrations/NNNN_*.sql yang belum terpasang.
+ *
+ * Migrasi v1-v6 masih berupa fungsi PHP di db_apply_migrations(); mulai v7
+ * semua migrasi memakai berkas SQL sehingga bisa ditinjau & di-rollback.
+ * Runner mengabaikan error "sudah ada" (1050/1060/1061) agar aman diulang.
+ */
+function db_apply_sql_migrations(): void
+{
+    $dir = APP_ROOT . '/database/migrations';
+    if (!is_dir($dir)) {
+        return;
+    }
+    $files = glob($dir . '/[0-9][0-9][0-9][0-9]_*.sql') ?: [];
+    $files = array_values(array_filter($files, static fn ($f) => !str_ends_with($f, '.down.sql')));
+    sort($files, SORT_STRING);
+    foreach ($files as $file) {
+        $version = (int) basename($file);
+        if ($version <= 0 || db_migration_applied($version)) {
+            continue;
+        }
+        $sql = (string) file_get_contents($file);
+        $sql = (string) preg_replace('/^\s*--.*$/m', '', $sql);
+        foreach (explode(';', $sql) as $statement) {
+            $statement = trim($statement);
+            if ($statement === '') {
+                continue;
+            }
+            try {
+                db()->exec($statement);
+            } catch (PDOException $e) {
+                $errno = (int) ($e->errorInfo[1] ?? 0);
+                // 1050 tabel ada, 1060 kolom ada, 1061 index ada.
+                if (!in_array($errno, [1050, 1060, 1061], true)) {
+                    error_log('[CBT migration ' . $version . '] ' . $e->getMessage());
+                    throw $e;
+                }
+            }
+        }
+        db_migration_mark($version);
+        error_log('[CBT migration ' . $version . '] diterapkan dari ' . basename($file));
+    }
+}
+
+/**
+ * Daftar migrasi SQL yang tersedia + statusnya (dipakai CLI & health check).
+ */
+function db_migrations_status(): array
+{
+    $dir = APP_ROOT . '/database/migrations';
+    $files = is_dir($dir) ? (glob($dir . '/[0-9][0-9][0-9][0-9]_*.sql') ?: []) : [];
+    $files = array_values(array_filter($files, static fn ($f) => !str_ends_with($f, '.down.sql')));
+    sort($files, SORT_STRING);
+    $out = [];
+    foreach ($files as $file) {
+        $version = (int) basename($file);
+        $out[] = [
+            'version' => $version,
+            'file'    => basename($file),
+            'applied' => db_migration_applied($version),
+            'has_down' => is_file(dirname($file) . '/' . basename($file, '.sql') . '.down.sql'),
+        ];
+    }
+    return $out;
 }
 
 /**
@@ -309,6 +532,7 @@ function seed_defaults(): void
         ['tindakan_pelanggaran', 'auto_submit', 'Tindakan saat batas maksimal pelanggaran tercapai (auto_submit / auto_blokir / record_only)'],
         ['gemini_api_key', '', 'Google Gemini API Key untuk fitur generate soal AI'],
         ['gemini_model', 'gemini-2.0-flash', 'Model Gemini yang digunakan untuk generate konten'],
+        ['token_per_siswa', 'Tidak', 'Gunakan token sekali pakai per siswa (Ya/Tidak). Kosong = token ujian global'],
     ];
     foreach ($defaults as $row) {
         $exists = (int) db_val('SELECT COUNT(*) FROM settings WHERE kunci = ?', [strtolower($row[0])], 0);
@@ -316,4 +540,5 @@ function seed_defaults(): void
             db_exec('INSERT INTO settings (kunci, nilai, keterangan) VALUES (?,?,?)', [strtolower($row[0]), $row[1], $row[2]]);
         }
     }
+    cbt_cache_delete('cbt.settings.map');
 }

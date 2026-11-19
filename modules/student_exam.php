@@ -88,7 +88,7 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
         $idUjian = trim(tostr($id_ujian));
         $userName = tostr($username);
 
-        $examRow = db_one('SELECT * FROM exams WHERE TRIM(id_ujian) = ?', [$idUjian]);
+        $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$idUjian]);
         if (!$examRow) {
             return err('Ujian tidak ditemukan.');
         }
@@ -233,12 +233,34 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
             }
         }
 
-        // Verifikasi token ujian (tidak diminta ulang saat melanjutkan)
-        $examToken = strtoupper(trim(tostr($examRow['token_ujian'] ?? '')));
-        if ($examToken !== '' && !$isResume) {
-            $enteredToken = strtoupper(trim(tostr($inputToken)));
-            if ($enteredToken === '' || !hash_equals($examToken, $enteredToken)) {
-                return err('Token ujian salah. Silakan minta token yang valid kepada guru pengawas.');
+        // Verifikasi token ujian (tidak diminta ulang saat melanjutkan).
+        // Mode token_per_siswa = Ya memakai token sekali pakai per peserta,
+        // berlaku sampai expires_at dan hanya bisa dipakai sekali (3.4).
+        $tokenPerSiswa = strtolower(trim(tostr(settings_map()['token_per_siswa'] ?? 'Tidak'))) === 'ya';
+        if ($tokenPerSiswa && !$isResume) {
+            $entered = strtoupper(trim(tostr($inputToken)));
+            $hash = hash('sha256', $entered);
+            $row = db_one(
+                'SELECT token_hash, expires_at, used_at FROM exam_tokens
+                 WHERE id_ujian = ? AND username_siswa = ? LIMIT 1',
+                [$idUjian, strtolower(trim($userName))]
+            );
+            $expired = !$row || strtotime(tostr($row['expires_at'])) < time();
+            if (!$row || $entered === '' || !hash_equals(tostr($row['token_hash']), $hash)
+                || $expired || tostr($row['used_at']) !== '') {
+                return err('Token pribadi tidak valid, kedaluwarsa, atau sudah digunakan. Hubungi guru pengawas.');
+            }
+            db_exec(
+                'UPDATE exam_tokens SET used_at = ? WHERE id_ujian = ? AND username_siswa = ?',
+                [now_dt(), $idUjian, strtolower(trim($userName))]
+            );
+        } else {
+            $examToken = strtoupper(trim(tostr($examRow['token_ujian'] ?? '')));
+            if ($examToken !== '' && !$isResume) {
+                $enteredToken = strtoupper(trim(tostr($inputToken)));
+                if ($enteredToken === '' || !hash_equals($examToken, $enteredToken)) {
+                    return err('Token ujian salah. Silakan minta token yang valid kepada guru pengawas.');
+                }
             }
         }
 
@@ -272,7 +294,7 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
 
         // Ambil soal tanpa kunci jawaban
         $textMap = exam_text_map($idUjian);
-        $qRows = db_all('SELECT * FROM questions WHERE TRIM(id_ujian) = ? ORDER BY urutan ASC, id_soal ASC', [$idUjian]);
+        $qRows = db_all('SELECT * FROM questions WHERE id_ujian = ? ORDER BY urutan ASC, id_soal ASC', [$idUjian]);
 
         $questions = [];
         foreach ($qRows as $qRow) {
@@ -415,6 +437,39 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
 /**
  * Autosave jawaban draft ke database (padanan autosaveExam()).
  */
+/**
+ * Catat perubahan jawaban ke tabel audit append-only (Bagian 3.4).
+ * Hanya jawaban yang benar-benar berubah yang ditulis (maks. 200 butir/save).
+ */
+function answer_audit_changes(string $idHasil, string $oldJson, array $newAnswers): void
+{
+    $old = json_decode($oldJson, true);
+    if (!is_array($old)) {
+        $old = [];
+    }
+    $written = 0;
+    foreach ($newAnswers as $questionId => $value) {
+        $qid = trim(tostr($questionId));
+        if ($qid === '' || $written >= 200) {
+            break;
+        }
+        $before = tostr($old[$qid] ?? '');
+        $after = tostr($value);
+        if ($before === $after) {
+            continue;
+        }
+        try {
+            db_exec(
+                'INSERT INTO answer_audit (id_hasil, id_soal, jawaban, changed_at, ip) VALUES (?,?,?,?,?)',
+                [$idHasil, substr($qid, 0, 40), substr($after, 0, 500), now_dt(), auth_client_ip()]
+            );
+            $written++;
+        } catch (Throwable $e) {
+            error_log('answer_audit_changes: ' . $e->getMessage());
+        }
+    }
+}
+
 function autosaveExam($username, $token, $payload): array
 {
     if (!validate_session($username, $token)) {
@@ -457,7 +512,7 @@ function autosaveExam($username, $token, $payload): array
             return err('Ujian Anda sedang diblokir. Hubungi guru/pengawas.');
         }
 
-        $examRow = db_one('SELECT * FROM exams WHERE TRIM(id_ujian) = ?', [$idUjian]);
+        $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$idUjian]);
         if (!$examRow) {
             return err('Ujian tidak ditemukan.');
         }
@@ -480,10 +535,28 @@ function autosaveExam($username, $token, $payload): array
             );
         }
 
-        db_exec(
-            'UPDATE results SET jumlah_pelanggaran = ?, detail_jawaban = ?, deadline_at = COALESCE(deadline_at, ?) WHERE id_hasil = ?',
-            [$violations, $answersJson, $deadline, tostr($existingRecord['row']['id_hasil'])]
-        );
+        // Batasi frekuensi tulis ke DB: maksimal satu autosave per 2 detik per
+        // (siswa, ujian). Memakai APCu bila tersedia; tanpa APCu tidak ada
+        // pembatasan agar autosave tetap aman (tidak ada jawaban yang hilang).
+        if (cbt_cache_apcu_ready() && function_exists('apcu_add')) {
+            $rateKey = 'cbt.autosave.' . md5(strtolower(tostr($username)) . '|' . $idUjian);
+            if (!apcu_add($rateKey, 1, 2)) {
+                return ['success' => true, 'skipped' => true, 'timestamp' => date('H:i:s'), 'deadline_at' => $deadline];
+            }
+        }
+
+        db_transaction(static function () use ($existingRecord, $answersJson, $violations, $deadline): void {
+            $answersArr = json_decode($answersJson, true);
+            answer_audit_changes(
+                tostr($existingRecord['row']['id_hasil']),
+                tostr($existingRecord['row']['detail_jawaban'] ?? ''),
+                is_array($answersArr) ? $answersArr : []
+            );
+            db_exec(
+                'UPDATE results SET jumlah_pelanggaran = ?, detail_jawaban = ?, deadline_at = COALESCE(deadline_at, ?) WHERE id_hasil = ?',
+                [$violations, $answersJson, $deadline, tostr($existingRecord['row']['id_hasil'])]
+            );
+        });
 
         return ['success' => true, 'timestamp' => date('H:i:s'), 'deadline_at' => $deadline];
     } catch (Throwable $e) {
@@ -535,10 +608,11 @@ function recordViolation($username, $token, $payload): array
             [$serverCount, tostr($row['id_hasil'])]
         );
 
-        log_activity(
+        log_violation_activity(
             tostr($username),
             $jenis,
-            'Ujian: ' . $idUjian . ' | Pelanggaran ke-' . $serverCount . ' | ' . $keterangan
+            'Pelanggaran ke-' . $serverCount . ' | ' . $keterangan,
+            $idUjian
         );
 
         $policy = violation_policy();
@@ -601,9 +675,27 @@ function submitExam($username, $token, $payload): array
     }
 
     try {
-        $examRow = db_one('SELECT * FROM exams WHERE TRIM(id_ujian) = ?', [$idUjian]);
+        $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$idUjian]);
         if (!$examRow) {
             return err('Ujian tidak ditemukan.');
+        }
+
+        // Idempotency key (Bagian 3.4): retry submit dengan kunci yang sama
+        // mengembalikan respons lama, bukan error "sudah disubmit".
+        $idempotencyKey = substr(trim(tostr($payload['idempotency_key'] ?? '')), 0, 64);
+        if ($idempotencyKey !== '') {
+            $prior = db_one(
+                'SELECT id_hasil, nilai_akhir, status FROM results WHERE idempotency_key = ? LIMIT 1',
+                [$idempotencyKey]
+            );
+            if ($prior && strtoupper(tostr($prior['status'])) === 'SUBMITTED') {
+                return [
+                    'success'            => true,
+                    'score'              => (float) $prior['nilai_akhir'],
+                    'idempotent_replay'  => true,
+                    'message'            => 'Submit ini sudah diproses sebelumnya (idempotent replay).',
+                ];
+            }
         }
 
         $requestedAttempt = $payload['percobaan_ke'] ?? null;
@@ -660,7 +752,7 @@ function submitExam($username, $token, $payload): array
         $totalQuestions = 0;
         $unansweredCount = 0;
 
-        $qRows = db_all('SELECT id_soal, kunci_jawaban, bobot FROM questions WHERE TRIM(id_ujian) = ? ORDER BY urutan ASC, id_soal ASC', [$idUjian]);
+        $qRows = db_all('SELECT id_soal, kunci_jawaban, bobot FROM questions WHERE id_ujian = ? ORDER BY urutan ASC, id_soal ASC', [$idUjian]);
         foreach ($qRows as $qRow) {
             $qId = tostr($qRow['id_soal']);
             if ($selectedSoalSet !== null && !isset($selectedSoalSet[$qId])) {
@@ -695,9 +787,10 @@ function submitExam($username, $token, $payload): array
         if ($existingRecord !== null) {
             db_exec(
                 'UPDATE results SET waktu_submit = ?, jumlah_pelanggaran = ?, nilai_akhir = ?, status = ?, detail_jawaban = ?,
-                    deadline_at = COALESCE(deadline_at, ?)
+                    deadline_at = COALESCE(deadline_at, ?), idempotency_key = COALESCE(idempotency_key, ?)
                  WHERE id_hasil = ?',
-                [$nowStr, $violations, $nilaiAkhir, 'SUBMITTED', $answersJsonStr, $deadline, tostr($existingRecord['row']['id_hasil'])]
+                [$nowStr, $violations, $nilaiAkhir, 'SUBMITTED', $answersJsonStr, $deadline,
+                 $idempotencyKey !== '' ? $idempotencyKey : null, tostr($existingRecord['row']['id_hasil'])]
             );
         } else {
             db_exec(
@@ -716,7 +809,7 @@ function submitExam($username, $token, $payload): array
         $nilaiTertinggi = $submitSummary !== null ? (float) $submitSummary['nilai_tertinggi'] : $nilaiAkhir;
 
         $attemptsLimit = 1;
-        $examRow = db_one('SELECT jumlah_percobaan FROM exams WHERE TRIM(id_ujian) = ?', [$idUjian]);
+        $examRow = db_one('SELECT jumlah_percobaan FROM exams WHERE id_ujian = ?', [$idUjian]);
         if ($examRow) {
             $attemptsLimit = normalize_exam_attempts($examRow['jumlah_percobaan']);
         }

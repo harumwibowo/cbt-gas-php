@@ -23,7 +23,7 @@ RedirectMatch 404 /\.git(/|$)
 RedirectMatch 404 /storage(/|$)
 
 # Berkas kredensial database tidak boleh diunduh lewat HTTP.
-<FilesMatch "^(database\.json|pass\.key|installed\.json|update_token\.txt)$">
+<FilesMatch "^(database\.json|pass\.key|installed\.json|update_token\.txt|maintenance\.json)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>
@@ -32,6 +32,16 @@ RedirectMatch 404 /storage(/|$)
     Deny from all
   </IfModule>
 </FilesMatch>
+
+# Kompresi respons teks (HTML/JSON/CSS/JS). index.php & api.php juga memakai
+# ob_gzhandler sebagai fallback bila mod_deflate tidak tersedia.
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript
+  AddOutputFilterByType DEFLATE application/json application/javascript application/xml
+  BrowserMatch ^Mozilla/4 gzip-only-text/html
+  BrowserMatch ^Mozilla/4\.0[678] no-gzip
+  BrowserMatch \bMSIE\s!?[456] no-gzip
+</IfModule>
 
 # Cache ringan untuk aset statis.
 <IfModule mod_expires.c>

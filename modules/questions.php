@@ -285,7 +285,7 @@ function deleteExamText($username, $token, $id_teks): array
         $namaTeks = tostr($row['nama_teks']);
 
         db_exec('DELETE FROM teks_ujian WHERE id_teks = ?', [$targetId]);
-        $released = db_exec('UPDATE questions SET id_teks = ? WHERE TRIM(id_teks) = ?', ['', $targetId]);
+        $released = db_exec('UPDATE questions SET id_teks = ? WHERE id_teks = ?', ['', $targetId]);
 
         log_activity(
             tostr($username),

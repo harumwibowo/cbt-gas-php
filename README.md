@@ -1,6 +1,6 @@
 # CBT GAS — PHP 8 + MySQL
 
-**Versi rilis:** `1.0.6` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
+**Versi rilis:** `1.0.7` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
 proyek (satu baris, mis. `1.0.3`). Berkas ini ikut tersalin saat pembaruan dari GitHub,
 sehingga label versi di **kartu Pembaruan Aplikasi** dan di **halaman login** otomatis
 berganti. Naikkan isinya setiap kali merilis versi baru.
@@ -610,10 +610,9 @@ php tools/migrate-passwords.php --dry-run
 - **Autentikasi**: memakai token per sesi (`TKN-…`) yang dikirim di body request, bukan
   cookie — jadi tidak rentan CSRF berbasis cookie. Perlakukan token seperti kredensial.
 - **Autosave**: jawaban dikirim ke database **setiap kali siswa menjawab atau mengubah
-  jawaban** (termasuk tanda ragu-ragu), dengan jeda gabung ±1 detik agar klik cepat
-  berturut-turut menjadi satu permintaan; timer sinkron berkala 60 detik sudah dihapus.
-  Simpan bersifat *last write wins* (satu siswa tidak mungkin menulis dua kali
-  bersamaan pada perangkat yang sama).
+  jawaban** (termasuk tanda ragu-ragu), dengan jeda gabung 2,5 detik di browser dan
+  pembatasan server maksimal satu tulis/2 detik per (siswa, ujian) bila APCu aktif.
+  Timer sinkron berkala 60 detik sudah dihapus. Simpan bersifat *last write wins*.
 - **AI Gemini** opsional; tanpa API key fitur generator soal otomatis mati, fitur lain
   tetap normal.
 - **Pengujian**: 125 pemeriksaan end-to-end tersedia di repo pengembangan (folder `tests/`)
@@ -624,3 +623,137 @@ php tools/migrate-passwords.php --dry-run
 
 Dibangun dari `Code.gs` + `Index.html` (Google Apps Script). Sumber asli tersimpan di
 riwayat git (`git show fbcbdcc:Code.gs`).
+
+---
+
+## 14. Tuning produksi & perawatan performa
+
+**Tidak ada DDL/seed pada request normal.** `ensure_schema()` hanya menjalankan satu
+`SELECT MAX(version) FROM schema_migrations` (di-cache APCu/file 5 menit). Seluruh
+`CREATE TABLE`, `SHOW COLUMNS`, dan seed default hanya berjalan saat instalasi/migrasi:
+
+```bash
+php tools/migrate.php status       # versi skema saat ini vs target
+php tools/migrate.php up           # jalankan DDL + migrasi + seed (idempoten)
+php tools/migrate.php cache:clear  # hapus cache pengaturan/dashboard/update
+php tools/migrate.php cleanup      # media orphan + sesi/log lama (jalankan via cron)
+```
+
+Naikkan `CBT_SCHEMA_VERSION` di `config/config.php` setiap kali menambah migrasi di
+`lib/db.php`. `media.php` sengaja tidak memanggil `ensure_schema()` — penyajian gambar
+hanya butuh `SELECT`.
+
+**Cache.** Pengaturan, versi skema, dashboard admin, dan hasil pengecekan update
+memakai APCu bila tersedia, dengan fallback berkas di `storage/cache/` (sudah diblokir
+`.htaccess`). TTL: pengaturan 60 dtk, dashboard 30 dtk, update check 900 dtk.
+Cache otomatis dibatalkan setelah tulisan terkait. Untuk produksi, aktifkan APCu:
+
+```ini
+apc.enable_cli=0        ; cukup untuk web (PHP-FPM); CLI migrasi tidak memakai APCu
+apc.shm_size=64M
+opcache.enable=1
+opcache.memory_consumption=128
+opcache.max_accelerated_files=10000
+opcache.validate_timestamps=0   ; hanya setelah deploy stabil (butuh reset saat deploy)
+realpath_cache_size=4096K
+memory_limit=256M
+```
+
+**Kompresi & cache browser.** `index.php` dan `api.php` memakai `ob_gzhandler`
+(fallback: `mod_deflate` di `.htaccess`). `index.php` mengirim `ETag`,
+`Last-Modified`, dan `Cache-Control: max-age=300` sehingga kunjungan ulang menerima
+`304`. `media.php` memakai ETag permanen + `Accept-Ranges: bytes`.
+
+**MySQL.**
+
+```ini
+innodb_buffer_pool_size   = 50-70% RAM
+innodb_flush_log_at_trx_commit = 2   # jika risiko kecil masih bisa diterima
+slow_query_log = ON
+long_query_time = 1
+```
+
+Index yang dipakai jalur panas: `uq_result_attempt`, `idx_results_exam_status`,
+`idx_results_student`, `idx_results_deadline`, `idx_questions_exam_order`,
+`idx_exams_guru_created`, `idx_logs_type_time`, `idx_users_role_status`.
+Semua query equality memakai kolom polos (tanpa `LOWER()`/`TRIM()`) agar index tidak
+dibatalkan; data lama dinormalisasi sekali oleh migrasi v5.
+
+**Retensi log.** `php tools/migrate.php cleanup` (cron harian) menghapus `logs` dan
+`login_attempts` yang lebih tua dari `CBT_LOG_RETENTION_DAYS` (default 180 hari),
+selain membersihkan media yatim dan sesi kedaluwarsa.
+
+**Autosave.** Browser menggabungkan perubahan jawaban selama 2,5 detik; server
+membatasi tulisan menjadi maksimal 1/write/2 detik per siswa per ujian bila APCu
+aktif. `getExamResults(..., false)` tidak mengirim `detail_jawaban` pada daftar;
+jawaban lengkap diambil lewat `getExamResultDetail` saat halaman detail dibuka.
+
+---
+
+## 15. Arsitektur, keamanan lanjutan & observability
+
+**Lapisan service.** `api.php` hanya melakukan parse request → cek origin/CSRF →
+`rbac_authorize()` → `service_dispatch()`. Kelas service ada di
+`services/Services.php` (`AuthService`, `ExamService`, `QuestionService`,
+`ResultService`, `UserService`, dll.). Exception domain di `lib/exceptions.php`
+dipetakan ke HTTP: validasi 422, forbidden 403, not found 404, konflik 409,
+server error 500 — semuanya memakai pesan aman + `X-Request-ID`.
+
+**Migrasi berversi.** Migrasi SQL ada di `database/migrations/NNNN_*.sql`.
+
+```bash
+php tools/migrate.php status                 # versi & daftar migrasi
+php tools/migrate.php up                     # backup dulu, lalu jalankan migrasi
+php tools/migrate.php rollback 0009          # jalankan 0009_*.down.sql (backup dulu)
+php tools/backup.php harian                  # backup manual
+```
+
+**Autentikasi modern.** Token sesi juga dikirim sebagai cookie `cbt_session`
+(HttpOnly + Secure saat HTTPS + SameSite=Lax). Shim tetap mengirim header
+`X-CSRF-Token` bila cookie `cbt_csrf` ada, tetapi pengecekan CSRF tinggal
+*defense-in-depth* yang **opsional**: aktifkan dengan `CBT_CSRF_ENFORCE=1`
+hanya bila semua klien dipastikan mengirim header tersebut. Secara default
+nonaktif karena token sesi sudah dikirim di body JSON (bukan cookie) dan
+`api.php` sudah memeriksa Origin/Referer. 2FA TOTP opsional untuk Admin/Guru:
+
+```bash
+php tools/2fa.php enable admin     # rahasia Base32 + URI otpauth://
+php tools/2fa.php code admin       # kode saat ini untuk uji
+php tools/2fa.php disable admin
+```
+
+Endpoint `setup2fa`/`confirm2fa`/`verify2fa`/`disable2fa`, `logoutAllDevices`,
+dan `getActiveSessions` tersedia lewat RPC. Halaman login otomatis meminta kode
+TOTP bila 2FA aktif. Kebijakan password: minimal 8 karakter (env
+`CBT_PASSWORD_MIN_LENGTH`), bukan password umum, tidak sama dengan username.
+
+**Integritas ujian.** Setiap perubahan jawaban dicatat di tabel `answer_audit`
+(append-only). Kirim `idempotency_key` pada `submitExam` agar retry tidak
+menghasilkan error ganda. Aktifkan `token_per_siswa = Ya` di Pengaturan lalu
+buat token sekali pakai lewat `generateStudentTokens` (berlaku sesuai TTL).
+
+**Observability.** `GET /health.php` menampilkan status DB/skema/disk/peserta
+aktif/metrik tanpa rahasia. Log JSON ada di `storage/logs/requests.jsonl`.
+
+```bash
+php tools/metrics.php 200          # p50/p95, error rate, rata-rata query
+```
+
+**Maintenance & Docker.**
+
+```bash
+php tools/maintenance.php on 30 "Update versi"
+php tools/maintenance.php off
+cp .env.example .env && docker compose up --build -d
+php tools/migrate.php up           # di dalam container: docker compose exec php php tools/migrate.php up
+```
+
+**Pengujian.**
+
+```bash
+php tests/unit_test.php            # 28 unit test mandiri
+python tests/e2e_test.py           # 62 endpoint test
+python tests/negative_auth_test.py # 38 negative authorization test
+python tests/load_test.py 20 5     # uji konkuren ringan
+vendor/bin/phpunit -c phpunit.xml.dist   # bila composer tersedia
+```

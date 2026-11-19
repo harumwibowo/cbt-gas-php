@@ -9,22 +9,35 @@ declare(strict_types=1);
 function count_active_admins(): int
 {
     return (int) db_val(
-        "SELECT COUNT(*) FROM users WHERE LOWER(TRIM(role)) = 'admin' AND LOWER(TRIM(status_aktif)) <> 'nonaktif'",
+        "SELECT COUNT(*) FROM users WHERE role = 'admin' AND status_aktif <> 'nonaktif'",
         [],
         0
     );
 }
 
-/** Daftar pengguna ringkas (padanan getUsers()). */
-function getUsers($username, $token): array
+/**
+ * Daftar pengguna ringkas (padanan getUsers()).
+ *
+ * Opsional: getUsers(username, token, page, perPage) mengambil satu halaman
+ * dari server. Tanpa argumen halaman, tetap mengembalikan seluruh pengguna
+ * (kompatibel dengan klien lama) tetapi dibatasi 5000 baris agar tidak
+ * terjadi pemindaian tak terbatas.
+ */
+function getUsers($username, $token, $page = 0, $perPage = 0): array
 {
     if (!validate_session($username, $token)) {
         return err('Sesi kedaluwarsa. Silakan login kembali.');
     }
 
     try {
+        $page = max(1, (int) $page);
+        $perPage = max(0, min(100, (int) $perPage));
+        $limitSql = $perPage > 0
+            ? ' LIMIT ' . (($page - 1) * $perPage) . ', ' . $perPage
+            : ' LIMIT 5000';
+
         $users = [];
-        foreach (db_all('SELECT * FROM users ORDER BY created_at ASC, username ASC') as $row) {
+        foreach (db_all('SELECT * FROM users ORDER BY created_at ASC, username ASC' . $limitSql) as $row) {
             $uName = trim(tostr($row['username']));
             if ($uName === '') {
                 continue;
@@ -40,7 +53,13 @@ function getUsers($username, $token): array
             ];
         }
 
-        return ['success' => true, 'users' => $users];
+        $response = ['success' => true, 'users' => $users];
+        if ($perPage > 0) {
+            $response['total'] = (int) db_val('SELECT COUNT(*) FROM users', [], 0);
+            $response['page'] = $page;
+            $response['per_page'] = $perPage;
+        }
+        return $response;
     } catch (Throwable $e) {
         return err('Gagal memuat pengguna: ' . client_error_message($e->getMessage()));
     }
@@ -99,6 +118,12 @@ function getStudentExamCards($username, $token): array
     }
 }
 
+/** Batalkan cache dashboard admin (dipanggil api.php setelah action mutasi). */
+function admin_dashboard_invalidate(): void
+{
+    cbt_cache_delete('cbt.admin.dashboard');
+}
+
 /** Data komprehensif dashboard admin (padanan getAdminData()). */
 function getAdminData($username, $token): array
 {
@@ -107,6 +132,13 @@ function getAdminData($username, $token): array
     }
 
     try {
+        // Dashboard menggabungkan users + logs + exams + katalog. Cache 30 detik
+        // di APCu/file; dibatalkan segera setelah ada action penulisan.
+        $cached = cbt_cache_get('cbt.admin.dashboard');
+        if (is_array($cached) && !empty($cached['success'])) {
+            return $cached;
+        }
+
         $stats = [
             'totalStudents'    => 0,
             'totalTeachers'    => 0,
@@ -116,7 +148,10 @@ function getAdminData($username, $token): array
         ];
 
         $users = [];
-        foreach (db_all('SELECT * FROM users ORDER BY created_at ASC, username ASC') as $row) {
+        // Muat users sekali lalu pakai ulang untuk katalog (sebelumnya
+        // catalog_lists() memuat seluruh tabel users untuk kedua kalinya).
+        $userRows = db_all('SELECT * FROM users ORDER BY created_at ASC, username ASC');
+        foreach ($userRows as $row) {
             $uName = trim(tostr($row['username']));
             if ($uName === '') {
                 continue;
@@ -181,9 +216,9 @@ function getAdminData($username, $token): array
             $exams[] = exam_to_client($row, $qCounts[$examId] ?? 0, $submitCounts[$examId] ?? 0);
         }
 
-        $lists = catalog_lists();
+        $lists = catalog_lists(false, $userRows);
 
-        return [
+        $result = [
             'success'            => true,
             'stats'              => $stats,
             'users'              => $users,
@@ -197,6 +232,8 @@ function getAdminData($username, $token): array
             'available_students' => $lists['available_students'],
             'available_teachers' => $lists['available_teachers'],
         ];
+        cbt_cache_set('cbt.admin.dashboard', $result, 30);
+        return $result;
     } catch (Throwable $e) {
         return err('Gagal memuat data admin: ' . client_error_message($e->getMessage()));
     }
@@ -294,11 +331,11 @@ function saveUser($username, $token, $userData): array
             $oldUsername = strtolower(trim(tostr($existing['username'])));
             if ($oldUsername !== $targetUsername) {
                 db_exec(
-                    'UPDATE results SET username_siswa = ? WHERE LOWER(TRIM(username_siswa)) = ?',
+                    'UPDATE results SET username_siswa = ? WHERE username_siswa = ?',
                     [$targetUsername, $oldUsername]
                 );
                 db_exec(
-                    'UPDATE exams SET id_guru = ? WHERE LOWER(TRIM(id_guru)) = ?',
+                    'UPDATE exams SET id_guru = ? WHERE id_guru = ?',
                     [$targetUsername, $oldUsername]
                 );
                 db_exec('UPDATE sessions SET username = ? WHERE username = ?', [$targetUsername, $oldUsername]);
@@ -318,7 +355,7 @@ function saveUser($username, $token, $userData): array
                 }
             }
 
-            db()->commit();
+            db()->commit(); current_user_invalidate();
             log_activity(tostr($username), 'Update User', 'Mengupdate user: ' . $targetUsername . ' (Tingkat: ' . $tktVal . ', Sesi: ' . $sesiVal . ')');
             return ['success' => true, 'message' => 'Pengguna berhasil diperbarui.'];
         }
@@ -330,7 +367,7 @@ function saveUser($username, $token, $userData): array
              VALUES (?,?,?,?,?,?,?,?,?,?,?)',
             [new_id('USR'), $targetUsername, $passHash, null, $nama, $role, $kelas, null, $status, $sesiVal, $tktVal]
         );
-        db()->commit();
+        db()->commit(); current_user_invalidate();
 
         log_activity(tostr($username), 'Create User', 'Menambahkan user baru: ' . $targetUsername . ' (' . $role . ', Tingkat: ' . $tktVal . ', Sesi: ' . $sesiVal . ')');
         return ['success' => true, 'message' => 'Pengguna baru berhasil ditambahkan.'];
@@ -359,8 +396,9 @@ function changePassword($username, $token, $currentPassword, $newPassword, $conf
     if ($newPassword === '') {
         return err('Password baru wajib diisi.');
     }
-    if (strlen($newPassword) < 5) {
-        return err('Password baru minimal harus 5 karakter.');
+    $policyError = password_policy_error((string) $newPassword, tostr($username));
+    if ($policyError !== null) {
+        return err($policyError);
     }
     if ($newPassword !== $confirmPassword) {
         return err('Konfirmasi password baru tidak cocok.');
@@ -370,7 +408,7 @@ function changePassword($username, $token, $currentPassword, $newPassword, $conf
     }
 
     try {
-        $row = db_one('SELECT * FROM users WHERE LOWER(TRIM(username)) = ?', [strtolower(trim(tostr($username)))]);
+        $row = db_one('SELECT * FROM users WHERE username = ?', [strtolower(trim(tostr($username)))]);
         if (!$row) {
             return err('Akun pengguna tidak ditemukan.');
         }
@@ -379,8 +417,9 @@ function changePassword($username, $token, $currentPassword, $newPassword, $conf
         }
 
         [$newHash, $newEnc] = password_fields($newPassword);
-        db_exec('UPDATE users SET password = ?, password_enc = NULL WHERE id_user = ?',
+        db_exec('UPDATE users SET password = ?, password_enc = NULL, must_change_password = 0 WHERE id_user = ?',
             [$newHash, tostr($row['id_user'])]);
+        current_user_invalidate(tostr($username));
         // Perangkat lain harus login ulang dengan password baru.
         db_exec(
             'UPDATE sessions SET revoked_at = ? WHERE username = ? AND token_hash <> ? AND revoked_at IS NULL',
@@ -422,15 +461,15 @@ function deleteUser($username, $token, $id_user): array
         db()->beginTransaction();
         session_revoke_all($deletedUsername);
         db_exec(
-            'UPDATE results SET username_siswa = ? WHERE LOWER(TRIM(username_siswa)) = ?',
+            'UPDATE results SET username_siswa = ? WHERE username_siswa = ?',
             [$anonName, strtolower(trim($deletedUsername))]
         );
         db_exec(
-            'UPDATE logs SET username = ? WHERE LOWER(TRIM(username)) = ?',
+            'UPDATE logs SET username = ? WHERE username = ?',
             [$anonName, strtolower(trim($deletedUsername))]
         );
         db_exec('DELETE FROM users WHERE id_user = ?', [tostr($id_user)]);
-        db()->commit();
+        db()->commit(); current_user_invalidate();
 
         log_activity(tostr($username), 'Delete User', 'Menghapus user: ' . $deletedUsername);
 
@@ -462,8 +501,8 @@ function getStudentLoginSessions($username, $token): array
         // tabel log di PHP.
         $lastLogins = [];
         foreach (db_all(
-            "SELECT LOWER(TRIM(username)) AS lname, MAX(`timestamp`) AS last_ts
-             FROM logs WHERE jenis_kejadian = 'Login' GROUP BY LOWER(TRIM(username))"
+            "SELECT username AS lname, MAX(`timestamp`) AS last_ts
+             FROM logs WHERE jenis_kejadian = 'Login' GROUP BY username"
         ) as $logRow) {
             $logUser = strtolower(trim(tostr($logRow['lname'])));
             if ($logUser !== '') {
@@ -556,7 +595,7 @@ function resetStudentLoginSession($username, $token, $targetUsername): array
             return err('Hanya Admin atau Guru yang dapat mereset sesi login siswa.');
         }
 
-        $row = db_one('SELECT * FROM users WHERE LOWER(TRIM(username)) = ?', [$target]);
+        $row = db_one('SELECT * FROM users WHERE username = ?', [$target]);
         if (!$row) {
             return err('Siswa tidak ditemukan.');
         }
@@ -597,7 +636,7 @@ function importUsers($username, $token, $usersList): array
 
     try {
         $existingUsers = [];
-        foreach (db_all('SELECT id_user, LOWER(TRIM(username)) AS lname FROM users') as $row) {
+        foreach (db_all('SELECT id_user, username AS lname FROM users') as $row) {
             $lu = strtolower(trim(tostr($row['lname'])));
             if ($lu !== '') {
                 $existingUsers[$lu] = tostr($row['id_user']);
@@ -688,7 +727,7 @@ function importUsers($username, $token, $usersList): array
             }
         }
 
-        db()->commit();
+        db()->commit(); current_user_invalidate();
 
         log_activity(tostr($username), 'Import Users', 'Mengimpor pengguna: ' . $addedCount . ' baru, ' . $updatedCount . ' diperbarui.');
 

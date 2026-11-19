@@ -5,7 +5,25 @@
  */
 declare(strict_types=1);
 
+// Kompresi respons (gzip/deflate) untuk HTML 650+ KB. ob_gzhandler otomatis
+// menyesuaikan dengan Accept-Encoding klien; fallback buffer biasa bila zlib
+// tidak tersedia. Ini menggantikan peran mod_deflate saat tidak tersedia.
+if (!ob_start('ob_gzhandler')) {
+    ob_start();
+}
+
 require_once __DIR__ . '/config/config.php';
+
+if (maintenance_active()) {
+    http_response_code(503);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Retry-After: 60');
+    echo '<!doctype html><html><head><meta charset="utf-8"><title>Pembaruan</title></head>'
+        . '<body style="font-family:system-ui;text-align:center;padding:4rem">'
+        . '<h1>Sedang diperbarui</h1><p>Aplikasi sedang dalam pembaruan. Silakan muat ulang beberapa saat lagi.</p>'
+        . '</body></html>';
+    exit;
+}
 
 try {
     ensure_schema();
@@ -37,6 +55,30 @@ try {
 } catch (Throwable $e) {
     $faviconSeed = 'default';
 }
+
+// ETag/Last-Modified dari mtime Index.html + versi aplikasi + favicon + shim.
+// Klien yang masih menyimpan salinan valid menerima 304 (tanpa HTML 650 KB).
+$viewMtime = (int) @filemtime($viewFile);
+$shimFile = APP_ROOT . '/assets/js/rpc-shim.js';
+$shimVersion = is_file($shimFile) ? (string) @filemtime($shimFile) : '1';
+$versionTag = function_exists('app_version_name') ? app_version_name() : (string) @file_get_contents(APP_ROOT . '/VERSION');
+$etag = '"' . md5($viewMtime . '|' . $versionTag . '|' . $faviconSeed . '|' . $shimVersion) . '"';
+$lastModified = gmdate('D, d M Y H:i:s', $viewMtime) . ' GMT';
+$ifNoneMatch = trim((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+$ifModifiedSince = trim((string) ($_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? ''));
+$notModified = $ifNoneMatch === $etag
+    || ($ifModifiedSince !== '' && (int) @strtotime($ifModifiedSince) >= $viewMtime);
+if ($notModified) {
+    http_response_code(304);
+    header('ETag: ' . $etag);
+    header('Last-Modified: ' . $lastModified);
+    header('Cache-Control: public, max-age=300, must-revalidate');
+    exit;
+}
+header('ETag: ' . $etag);
+header('Last-Modified: ' . $lastModified);
+header('Cache-Control: public, max-age=300, must-revalidate');
+
 $faviconTag = '<link rel="icon" type="image/png" href="favicon.php?v=' . $faviconSeed . '" data-app-favicon="1">'
     . '<link rel="apple-touch-icon" href="favicon.php?v=' . $faviconSeed . '" data-app-favicon="1">';
 // Penanda data-app-favicon dipakai agar penyisipan tidak dobel (Index.html juga
@@ -51,7 +93,7 @@ if (!str_contains($html, 'data-app-favicon')) {
     }
 }
 
-$shimTag = '<script src="assets/js/rpc-shim.js"></script>';
+$shimTag = '<script src="assets/js/rpc-shim.js?v=' . $shimVersion . '"></script>';
 // Sisipkan shim tepat sebelum </body> TERAKHIR (yang pertama bisa berada di
 // dalam template literal HTML printer kartu ujian).
 if (!str_contains($html, 'assets/js/rpc-shim.js')) {

@@ -133,8 +133,72 @@ function log_activity(string $username, string $jenisKejadian, string $keteranga
             'INSERT INTO logs (`timestamp`, username, jenis_kejadian, keterangan) VALUES (?,?,?,?)',
             [now_dt(), $username !== '' ? $username : 'Anonymous', $jenisKejadian, $keterangan]
         );
+        // Log terstruktur (JSON) untuk observability, tanpa isi sensitif.
+        if (function_exists('obs_event')) {
+            obs_event('audit', ['username' => $username, 'event' => $jenisKejadian]);
+        }
     } catch (Throwable $e) {
         error_log('Gagal mencatat log: ' . $e->getMessage());
+    }
+}
+
+/** Retensi log dalam hari (bisa diatur lewat CBT_LOG_RETENTION_DAYS). */
+function log_retention_days(): int
+{
+    $v = (int) (getenv('CBT_LOG_RETENTION_DAYS') ?: 180);
+    return max(30, min(3650, $v));
+}
+
+/**
+ * Hapus log dan jejak login yang sudah melewati masa retensi.
+ * Dipanggil dari cron: php tools/migrate.php cleanup
+ *
+ * @return int jumlah baris yang dihapus
+ */
+function log_retention_cleanup(): int
+{
+    $cutoff = date('Y-m-d H:i:s', time() - (log_retention_days() * 86400));
+    $deleted = 0;
+    try {
+        $deleted += db_exec('DELETE FROM logs WHERE `timestamp` < ?', [$cutoff]);
+    } catch (Throwable $e) {
+        error_log('log_retention_cleanup (logs): ' . $e->getMessage());
+    }
+    try {
+        $deleted += db_exec('DELETE FROM login_attempts WHERE attempted_at < ?', [$cutoff]);
+    } catch (Throwable $e) {
+        error_log('log_retention_cleanup (login_attempts): ' . $e->getMessage());
+    }
+    return $deleted;
+}
+
+/**
+ * Catat pelanggaran ujian secara terstruktur (exam_id, IP, User-Agent dari server).
+ * Keterangan teks tetap diisi agar log lama mudah dibaca; filter rekap kini bisa
+ * memakai kolom exam_id/index, bukan memindai teks dengan LIKE.
+ */
+function log_violation_activity(string $username, string $jenisKejadian, string $keterangan, string $examId): void
+{
+    try {
+        db_exec(
+            'INSERT INTO logs (`timestamp`, username, jenis_kejadian, keterangan, exam_id, ip, user_agent)
+             VALUES (?,?,?,?,?,?,?)',
+            [
+                now_dt(),
+                $username !== '' ? $username : 'Anonymous',
+                $jenisKejadian,
+                $keterangan,
+                substr(trim($examId), 0, 40),
+                substr(trim((string) ($_SERVER['REMOTE_ADDR'] ?? '')), 0, 45),
+                substr(trim((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')), 0, 255),
+            ]
+        );
+        if (function_exists('obs_event')) {
+            obs_event('violation', ['username' => $username, 'event' => $jenisKejadian, 'exam_id' => $examId]);
+        }
+    } catch (Throwable $e) {
+        // Fallback untuk skema sebelum migrasi v6: tetap catat informasinya.
+        log_activity($username, $jenisKejadian, $keterangan);
     }
 }
 
@@ -340,9 +404,11 @@ function cmp_text(string $a, string $b): int
  * dan target peserta (padanan blok distinctClasses/distinctGrades/... pada
  * getAdminData() & getTeacherExams()).
  *
- * @param bool $onlyStudentRole true = hanya role 'siswa' (perilaku getAdminData)
+ * @param bool  $onlyStudentRole true = hanya role 'siswa' (perilaku getAdminData)
+ * @param array|null $userRows   baris users yang sudah dimuat caller (opsional,
+ *                               menghindari SELECT users kedua dalam satu request)
  */
-function catalog_lists(bool $onlyStudentRole = false): array
+function catalog_lists(bool $onlyStudentRole = false, ?array $userRows = null): array
 {
     $classes = [];
     $classGradeMap = [];
@@ -358,7 +424,8 @@ function catalog_lists(bool $onlyStudentRole = false): array
         }
     }
 
-    foreach (db_all('SELECT username, nama_lengkap, role, kelas, sesi, tingkat, status_aktif FROM users') as $u) {
+    $rows = $userRows ?? db_all('SELECT username, nama_lengkap, role, kelas, sesi, tingkat, status_aktif FROM users');
+    foreach ($rows as $u) {
         $kVal = trim(tostr($u['kelas']));
         $tVal = trim(tostr($u['tingkat']));
         $lowerKelas = strtolower($kVal);

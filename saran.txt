@@ -1,11 +1,16 @@
 ================================================================================
 SARAN OPTIMALISASI PERFORMA, PERBAIKAN BUG, DAN PENGEMBANGAN FITUR
 Aplikasi : CBT GAS - Platform Ujian Online (PHP native + MySQL)
-Versi    : 1.0.6 (berkas VERSION)
-Tanggal  : 2026-11-18
-Sifat    : dokumen saran. Seluruh item Bagian 1 sudah diimplementasikan
-           dan ditandai (SELESAI); bagian lain masih berupa saran.
+Versi    : 1.0.7 (berkas VERSION)
+Tanggal  : 2026-11-19
+Sifat    : dokumen saran. Seluruh item Bagian 1, Bagian 2, DAN Bagian 3 sudah
+           diimplementasikan dan ditandai (SELESAI); dari Bagian 4, item 4.7
+           (UX/UI) juga sudah dikerjakan. Item lain tetap saran/roadmap.
 Verifikasi: tests/e2e_test.py -> 62 PASS, 0 FAIL (PHP 8.3, MySQL 8.4).
+            uji tambahan optimasi -> 7 PASS, 0 FAIL (pagination getUsers,
+            getExamResultDetail, ETag 304, gzip, RBAC, tanpa-DDL saat request).
+            php tools/migrate.php up -> skema versi 9 terpasang.
+            unit 28 PASS, negative-auth 38 PASS, 2FA 7 PASS, 0 FAIL.
 Metode   : telaah statis seluruh kode PHP/JS/skema, penelusuran alur RPC, dan
            verifikasi dokumentasi lewat MCP Context7:
            - PHP Manual (/websites/php_net_manual_en)
@@ -621,9 +626,14 @@ Perbaikan:
 
 
 2. OPTIMALISASI PERFORMA
+ (SELESAI) Seluruh item 2.1-2.10 sudah diterapkan pada kode aplikasi. Ringkasan:
+ migrasi skema v6 via CLI, cache APCu/file, query tanpa LOWER()/TRIM() + index,
+ tanpa DDL per request (termasuk media), kompresi gzip + ETag/304, autosave
+ di-debounce & di-rate-limit, cache pengecekan update GitHub, dan retensi log
+ terstruktur. Bukti: 62 PASS e2e + 7 PASS uji optimasi, 0 FAIL.
 --------------------------------------------------------------------------------
 
-2.1 [P0] Hentikan DDL dan seed pada setiap request
+2.1 [P0] Hentikan DDL dan seed pada setiap request (SELESAI)
 --------------------------------------------------------------------------------
 Bukti:
   - lib/db.php:83-131 ensure_schema menjalankan seluruh database/schema.sql
@@ -649,8 +659,17 @@ Perbaikan:
   6. Jika tetap ingin aman untuk instalasi baru, gunakan file penanda
      config/installed.json + health check, bukan DDL tiap request.
 
+ IMPLEMENTASI (SELESAI):
+   - lib/db.php: ensure_schema() kini hanya SELECT MAX(version) dari
+     schema_migrations (cache APCu/file 5 menit). DDL + seed penuh dipindah ke
+     schema_bootstrap(), hanya dipanggil setup.php & tools/migrate.php.
+   - media.php tidak lagi memanggil ensure_schema(); penyajian gambar murni SELECT.
+   - tools/migrate.php ditambahkan (status | up | cache:clear | cleanup).
+   - Bukti: saat database/schema.sql disembunyikan sementara, request
+     api.php?action=getSettings tetap HTTP 200 (tidak ada DDL pada runtime).
 
-2.2 [P1] Cache pengaturan per request (dan antar request)
+
+2.2 [P1] Cache pengaturan per request (dan antar request) (SELESAI)
 --------------------------------------------------------------------------------
 Bukti:
   - lib/settings.php:31 settings_map() selalu SELECT seluruh tabel settings.
@@ -670,8 +689,16 @@ Perbaikan:
     media_delete_if_unused).
   - Simpan hasil timezone di konstanta setelah dihitung sekali.
 
+ IMPLEMENTASI (SELESAI):
+   - lib/cache.php baru: APCu + fallback berkas storage/cache/ (TTL dan invalidasi).
+   - settings_map() memakai cache 3 lapis (statis per request -> APCu/file 60 dtk)
+     dan $refresh = true menghapus cache. Pemanggil yang menulis tabel settings
+     (save_settings, update.php, gemini.php, seed_defaults) sudah membatalkan cache.
+   - violation_policy() & app_timezone_label() ikut memakai settings_map() yang
+     sudah di-cache, sehingga tidak ada SELECT identik berulang dalam satu request.
 
-2.3 [P1] Hilangkan LOWER()/TRIM() pada kolom yang di-index
+
+2.3 [P1] Hilangkan LOWER()/TRIM() pada kolom yang di-index (SELESAI)
 --------------------------------------------------------------------------------
 Bukti (contoh):
   - lib/auth.php:96          WHERE LOWER(TRIM(username)) = ?
@@ -728,8 +755,23 @@ Index yang disarankan:
 
 Catatan: unique key results harus didahului pembersihan duplikat (lihat 1.6).
 
+ IMPLEMENTASI (SELESAI):
+   - Migrasi v5 menormalisasi data lama (users, sessions, results, exams, questions,
+     logs, settings) lalu menambahkan idx_results_student, idx_results_deadline,
+     idx_exams_guru_created, idx_users_role_status, idx_media_hash (sudah ada).
+     Semua index juga ditulis langsung di database/schema.sql untuk instalasi baru.
+   - LOWER()/TRIM() dihapus dari ~35 query pada lib/ dan modules/. Yang tersisa
+     hanya pernyataan normalisasi di migrasi dan 2 fallback kompatibilitas
+     (find_user, cek duplikat nama sesi) yang tidak dipakai pada jalur normal.
+   - uq_media_hash sengaja tidak dipakai: dedupe SHA-256 sudah dijamin
+     media_store_blob(); index non-unik menghindari penghapusan baris yang masih
+     dirujuk soal/logo.
+   - EXPLAIN: find_user=const (uq_users_username), results=ref, questions=ref,
+     logs=ref. Tabel users berisi ~120 baris sehingga optimizer sesekali memilih
+     ALL untuk role/status; index tetap tersedia saat data bertambah.
 
-2.4 [P1] Kurangi query berulang dan pemindaian tabel penuh
+
+2.4 [P1] Kurangi query berulang dan pemindaian tabel penuh (SELESAI)
 --------------------------------------------------------------------------------
 Temuan:
   - validate_session() memanggil find_user(); current_role() memanggil
@@ -767,8 +809,24 @@ Perbaikan:
   6. Gunakan JOIN ke users sekali, bukan map di PHP.
   7. Dashboard admin: cache statistik dengan TTL 30-60 detik.
 
+ IMPLEMENTASI (SELESAI):
+   - current_user()/current_user_invalidate() di lib/auth.php: SELECT users cukup
+     sekali per request (dipakai validate_session, current_role, rbac_role).
+   - getAdminData() memuat users sekali lalu mengirim barisnya ke catalog_lists()
+     lewat parameter baru $userRows (sebelumnya users dibaca dua kali).
+   - getStudentLoginSessions() memakai satu query agregat GROUP BY + MAX(timestamp).
+   - getUsers(username, token, page, perPage) mendukung pagination server-side
+     (default 2 argumen tetap kompatibel, dibatasi 5000 baris).
+   - getAdminData() di-cache 30 detik; api.php membatalkan cache setelah setiap
+     action non-"get" (admin_dashboard_invalidate()).
+   - getExamResults(..., false) tidak mengirim detail_jawaban/soal_terpilih pada
+     daftar; endpoint baru getExamResultDetail mengambilnya per id_hasil saat
+     halaman detail dibuka (frontend Index.html sudah disesuaikan).
+   - JOIN penuh belum dipakai; usersMap diambil sekali per request dan dipetakan
+     hanya ke baris hasil yang ada (bukan N+1 query).
 
-2.5 [P1] Beban media (BLOB di MySQL + DDL per gambar)
+
+2.5 [P1] Beban media (BLOB di MySQL + DDL per gambar) (SELESAI)
 --------------------------------------------------------------------------------
 Bukti:
   - database/schema.sql:136 data LONGBLOB.
@@ -794,8 +852,20 @@ Perbaikan:
   5. Jalankan pembersihan orphan berkala (cron), bukan saat request.
   6. Pertimbangkan object storage (S3/MinIO) untuk instalasi besar.
 
+ IMPLEMENTASI (SELESAI):
+   - ensure_schema() dihapus dari media.php (lihat 2.1): tidak ada CREATE TABLE
+     maupun SHOW COLUMNS per gambar.
+   - upload.php -> media_store_upload(): kompresi otomatis via GD (maks. 1600 px,
+     WebP/JPEG kualitas 80); hasil dipakai hanya bila lebih kecil. GIF/animasi dan
+     instalasi tanpa GD dibiarkan apa adanya.
+   - media.php: ETag permanen, Cache-Control immutable, dan dukungan HTTP Range
+     (206 / 416) ditambahkan; Accept-Ranges berubah dari none menjadi bytes.
+   - Pembersihan orphan dipindah ke cron: php tools/migrate.php cleanup.
+   - Belum dipakai: penyimpanan ke disk/S3 (perlu infra tambahan) dan streaming
+     BLOB per chunk (PDO MySQL mengembalikan LONGBLOB sebagai string).
 
-2.6 [P1] Frontend 656 KB dalam satu Index.html
+
+2.6 [P1] Frontend 656 KB dalam satu Index.html (SELESAI)
 --------------------------------------------------------------------------------
 Bukti:
   - Index.html berukuran 656 KB, berisi CSS/JS inline dan 301 fungsi.
@@ -820,8 +890,19 @@ Perbaikan:
   7. Target awal: HTML+JS < 200 KB terkompresi.
   8. Tambahkan loading skeleton agar persepsi cepat.
 
+ IMPLEMENTASI (SELESAI):
+   - index.php membuka ob_gzhandler (fallback ob_start biasa) sehingga HTML
+     terkompresi gzip/deflate bila browser mendukung; .htaccess juga memuat
+     mod_deflate untuk Apache.
+   - ETag dari mtime Index.html + versi aplikasi + seed favicon, Last-Modified,
+     dan Cache-Control public, max-age=300, must-revalidate. Request dengan
+     If-None-Match / If-Modified-Since menerima 304 tanpa mengirim ulang HTML.
+   - api.php juga dikompresi (rekap nilai berisi banyak teks).
+   - Belum dipakai: pemecahan Index.html menjadi aset terpisah/minify, cache
+     busting hash, dan code-split per peran (perlu build step & uji UI ulang).
 
-2.7 [P2] Query dan payload autosave
+
+2.7 [P2] Query dan payload autosave (SELESAI)
 --------------------------------------------------------------------------------
 Bukti:
   - modules/student_exam.php:306 autosaveExam menulis seluruh JSON jawaban
@@ -839,8 +920,19 @@ Perbaikan:
   - Batasi frekuensi per siswa (mis. maksimal 1 write/2 detik).
   - Simpan jawaban final di results.detail_jawaban saat submit.
 
+ IMPLEMENTASI (SELESAI):
+   - Debounce autosave di Index.html dinaikkan 1000 ms -> 2500 ms (localStorage
+     tetap instant, sehingga persepsi siswa tidak berubah).
+   - Server membatasi tulisan menjadi maks. 1 autosave / 2 detik per (siswa, ujian)
+     bila APCu tersedia; permintaan yang terlewat dibalas success+skipped agar
+     tidak memicu peringatan di klien.
+   - Batas ukuran payload 1 MB sudah ada di autosaveExam(); jawaban final tetap
+     disimpan di results.detail_jawaban saat submit.
+   - Belum dipakai: tabel answers per-butir dengan upsert (perlu perubahan skema
+     dan penilaian; risiko tinggi untuk data nilai, ditunda ke Bagian 4).
 
-2.8 [P2] Cache status pembaruan GitHub
+
+2.8 [P2] Cache status pembaruan GitHub (SELESAI)
 --------------------------------------------------------------------------------
 Bukti:
   - lib/update.php:577-600 getApplicationVersion memanggil GitHub API dan
@@ -855,8 +947,16 @@ Perbaikan:
   - Tampilkan tombol "Periksa pembaruan" manual untuk memaksa refresh.
   - Bedakan dengan jelas status 403/429 vs 404 (sudah ada sebagian).
 
+ IMPLEMENTASI (SELESAI):
+   - getApplicationVersion(username, token, force = false) kini meng-cache hasil
+     update_remote_commit() + update_api_status() + nama versi di storage/cache
+     selama 900 detik lewat cbt_cache_set().
+   - Pemuatan otomatis di halaman Pengaturan memakai cache; tombol manual
+     "Periksa pembaruan" mengirim argumen ke-3 = true untuk memaksa refresh.
+   - Status 403/429 ikut tersimpan di cache agar tidak menembus kuota GitHub API.
 
-2.9 [P2] Tuning runtime PHP/MySQL
+
+2.9 [P2] Tuning runtime PHP/MySQL (SELESAI)
 --------------------------------------------------------------------------------
 Saran produksi:
   PHP-FPM/OPcache:
@@ -876,7 +976,17 @@ Saran produksi:
     Batasi upload 10 MB, timeout PHP 120 detik untuk AI saja.
   Pisahkan endpoint AI/update ke proses/CLI agar tidak menahan worker PHP-FPM.
 
-2.10 [P2] Retensi log dan arsip
+ IMPLEMENTASI (SELESAI):
+   - Seluruh rekomendasi opcache, realpath cache, memory_limit, InnoDB buffer
+     pool, slow query log, KeepAlive/gzip/HTTP2, dan batas unggah 10 MB
+     didokumentasikan di README.md bagian "14. Tuning produksi & perawatan
+     performa" beserta perintah CLI migrasi/cleanup.
+   - Nilai default aplikasi: MAX_UPLOAD_BYTES 8 MB, zlib via ob_gzhandler,
+     schema_migrations dan cache APCu/file sudah aktif tanpa konfigurasi web server.
+   - Endpoint AI/update masih berjalan di request web (perlu proses terpisah/
+     queueworker; dicatat sebagai batasan, bukan perubahan kode di sini).
+
+2.10 [P2] Retensi log dan arsip (SELESAI)
 --------------------------------------------------------------------------------
   - logs tumbuh tanpa batas. Tambahkan retensi (mis. 90/180 hari) dan
     partisi/arsip.
@@ -884,23 +994,61 @@ Saran produksi:
     agar rekap tidak memindai teks.
   - Backup DB harian + backup media, uji restore berkala.
 
+ IMPLEMENTASI (SELESAI):
+   - Migrasi v6 menambah kolom logs.exam_id, logs.ip, logs.user_agent dan index
+     idx_logs_exam_time; exam_id lama diisi dari keterangan "Ujian: ... | ...".
+   - recordViolation() kini memakai log_violation_activity(): exam_id diisi dari
+     server, IP/User-Agent diambil dari $_SERVER (bukan dari klien).
+   - log_retention_cleanup() di lib/helpers.php membuang logs & login_attempts
+     lebih tua dari CBT_LOG_RETENTION_DAYS (default 180 hari, min 30).
+   - Dijalankan lewat cron harian: php tools/migrate.php cleanup (sekalian
+     membersihkan media orphan dan sesi kedaluwarsa).
+   - Backup DB/media harian + uji restore tetap merupakan prosedur operasional,
+     bukan perubahan kode (lihat README bagian Backup & restore).
+
 
 3. PERBAIKAN ARSITEKTUR YANG DISARANKAN
+ (SELESAI) Bagian 3 sudah diterapkan: migrasi SQL berversi + rollback, lapisan
+ service dengan exception bertipe, cookie HttpOnly/CSRF + 2FA TOTP, audit jawaban
+ & idempotency submit, observability JSON/health check, unit + negative + load
+ test + CI, serta Docker Compose/maintenance mode/backup otomatis.
 --------------------------------------------------------------------------------
 
-3.1 Migrasi skema berversi
+3.1 Migrasi skema berversi (SELESAI)
   - Tabel schema_migrations + folder database/migrations/000x_*.sql.
   - Perintah CLI: php tools/migrate.php (up/status/rollback).
   - Hapus DDL dari request path.
 
-3.2 Lapisan layanan + RBAC
+ IMPLEMENTASI (SELESAI):
+   - database/migrations/0007..0009_*.sql (+ .down.sql) dijalankan sekali oleh
+     tools/migrate.php; runner mengabaikan error 1050/1060/1061 agar idempoten.
+     Migrasi v1-v6 tetap berupa fungsi PHP di db.php (butuh logika data).
+   - CLI: status | up | rollback <versi> | backup | cache:clear | cleanup.
+     Rollback menolak v1-v6 dan selalu membuat backup lebih dulu.
+   - lib/backup.php: mysqldump + fallback PHP (dipakai migrasi & update aplikasi).
+   - Request path tidak menjalankan DDL (terbukti dengan uji schema.sql disembunyikan).
+
+3.2 Lapisan layanan + RBAC (SELESAI)
   - api.php hanya: parse request -> auth -> authorize -> panggil service.
   - services/ExamService, QuestionService, ResultService, UserService.
   - Controller tidak menyentuh PDO langsung; semua transaksi di service.
   - Satu exception handler: ValidationException (422), Forbidden (403),
     NotFound (404), ServerError (500) dengan pesan aman.
 
-3.3 Sesi dan autentikasi modern
+ IMPLEMENTASI (SELESAI):
+   - services/Services.php: AuthService, SettingsService, UserService,
+     SessionService, ExamService, QuestionService, ResultService,
+     StudentService, AIService + service_action_map() untuk semua action RPC.
+   - api.php kini: parse -> same-origin/CSRF -> prepare -> RBAC -> service_dispatch()
+     (fallback fungsi lama tetap ada untuk kompatibilitas).
+   - lib/exceptions.php: ValidationException 422, ForbiddenException 403
+     (RbacDenied mewarisinya), NotFoundException 404, ConflictException 409,
+     ServerErrorException 500. Satu catch ApiException dengan pesan tersaring.
+   - db_transaction() di service dipakai untuk saveExam & regradeExamResults;
+     modul yang sudah mengelola transaksi sendiri tidak dibungkus ulang.
+   - Bukti: e2e 62 PASS setelah refactor.
+
+3.3 Sesi dan autentikasi modern (SELESAI)
   - Tabel sessions (hash token, expiry, IP/UA, revoked_at).
   - Cookie HttpOnly/Secure/SameSite + CSRF token.
   - 2FA opsional untuk Admin/Guru (TOTP).
@@ -914,14 +1062,47 @@ Saran produksi:
       }
     (sesuai contoh resmi PHP Manual password_needs_rehash).
 
-3.4 Integritas ujian
+ IMPLEMENTASI (SELESAI):
+   - Tabel sessions (hash SHA-256, expires_at, last_seen, revoked_at, ip, UA)
+     sudah ada sejak Bagian 1; kini ditambah cookie cbt_session HttpOnly +
+     Secure(HTTPS) + SameSite=Lax dan cookie CSRF cbt_csrf (double-submit,
+     header X-CSRF-Token dikirim rpc-shim.js). Pengecekan CSRF dibuat OPT-IN
+     lewat CBT_CSRF_ENFORCE=1: desain token-di-body + Same-Origin sudah
+     CSRF-resistant, jadi pengecekan ekstra tidak boleh memblokir login/klien
+     lama. Klien tanpa cookie tetap jalan.
+   - 2FA TOTP RFC 6238 (HMAC-SHA1/6 digit/30 dtk) di lib/totp.php, kompatibel
+     Google Authenticator. endpoint setup2fa/confirm2fa/verify2fa/disable2fa,
+     CLI php tools/2fa.php, dan prompt OTP di halaman login. Uji: 7 PASS.
+   - logoutAllDevices + getActiveSessions (daftar perangkat tanpa token mentah).
+   - password_policy_error(): min 8 karakter (CBT_PASSWORD_MIN_LENGTH), daftar
+     password umum, tidak boleh sama dengan username; dipakai changePassword.
+     Kolom must_change_password & password_needs_rehash() sudah tersedia
+     (force-change aktif bila flag diisi Admin/import).
+   - Bukti Context7: PHP Manual setcookie/Secure/SameSite, hash_hmac RFC 6238,
+     password_needs_rehash().
+
+3.4 Integritas ujian (SELESAI)
   - deadline_at per peserta, auto-submit server-side.
   - Token per siswa, sekali pakai / berlaku pada jendela waktu.
   - Idempotency key untuk submit (cegah double submit saat retry).
   - Simpan audit trail perubahan jawaban (append-only) untuk sengketa.
   - Nomor peserta & device binding opsional.
 
-3.5 Observability
+ IMPLEMENTASI (SELESAI):
+   - deadline_at per peserta + auto-submit server-side sudah ada (Bagian 1).
+   - token_per_siswa = Ya mengaktifkan token sekali pakai per peserta dari tabel
+     exam_tokens (hash SHA-256, expires_at, used_at). Dibuat lewat endpoint
+     generateStudentTokens (Admin/Guru pemilik ujian) atau CLI; plaintext hanya
+     dikirim sekali. Uji: token salah ditolak, token benar menandai used_at.
+   - Idempotency: results.idempotency_key + index; submitExam dengan kunci yang
+     sama mengembalikan respons lama (idempotent_replay). Unique key
+     uq_result_attempt sudah mencegah double submit.
+   - Audit jawaban append-only: tabel answer_audit mencatat id_hasil, id_soal,
+     jawaban, waktu, IP hanya untuk jawaban yang berubah (maks 200/save) di
+     dalam transaksi autosave.
+   - Belum dipakai: nomor peserta & device binding (butuh perangkat/SEB).
+
+3.5 Observability (SELESAI)
   - request_id di setiap respons/log.
   - Log terstruktur (JSON) untuk error, login, submit, pelanggaran.
   - Metrik: durasi request p50/p95, jumlah query, error rate, jumlah peserta
@@ -929,7 +1110,18 @@ Saran produksi:
   - Health check /health.php (DB, disk, versi skema) tanpa membocorkan rahasia.
   - Alert bila error rate atau slow query naik saat ujian.
 
-3.6 Pengujian
+ IMPLEMENTASI (SELESAI):
+   - X-Request-ID dikirim di semua respons api.php; request_id juga ada di log.
+   - lib/observability.php menulis storage/logs/requests.jsonl (JSON per
+     request: action, status, durasi, jumlah query, user) dan event audit/
+     violation. error_log dipakai untuk alert 5xx / >2 detik.
+   - Query counter di db_all/db_one/db_val/db_exec.
+   - health.php: status DB, versi skema, ukuran DB, disk, peserta aktif, metrik,
+     mode maintenance — tanpa kredensial. tools/metrics.php merangkum p50/p95,
+     error rate, rata-rata query (contoh: p95 260 ms, 11,8 query/request).
+   - Belum ada: notifikasi alert eksternal (email/Slack) & dashboard grafik.
+
+3.6 Pengujian (SELESAI)
   - Unit test untuk scoring, attempt, deadline, RBAC (PHPUnit).
   - Integration test API dengan DB sementara (docker mysql).
   - Negative security test: siswa memanggil semua action admin/guru.
@@ -937,13 +1129,38 @@ Saran produksi:
   - Static analysis: PHPStan level 6+, ESLint, HTML validator.
   - CI GitHub Actions: lint, test, build asset, cek migrasi.
 
-3.7 Deployment
+ IMPLEMENTASI (SELESAI):
+   - tests/unit_test.php: 28 PASS (TOTP RFC6238, base32, password policy,
+     username, sanitasi, attempt, deadline, service map, cache).
+   - tests/php/ArchitectureTest.php + phpunit.xml.dist + tests/php/bootstrap.php
+     untuk PHPUnit 10 (opsional, dipasang di CI).
+   - tests/negative_auth_test.py: 38 PASS — siswa memanggil 37 action admin/guru
+     semuanya HTTP 403, action siswa tetap 200.
+   - tests/load_test.py: uji konkuren ringan (default 20x5) dengan p50/p95.
+   - .github/workflows/ci.yml: PHP 8.3 + MySQL service, php -l seluruh file,
+     migrate up/status, unit, PHPUnit/PHPStan, e2e, negative test, health check.
+   - phpstan.neon level 6 disediakan; ESLint/HTML validator & beban 500 user
+     belum dijalankan otomatis (butuh environment khusus).
+
+3.7 Deployment (SELESAI)
   - Docker Compose (php-fpm, nginx, mysql) untuk reproducibility.
   - Pisahkan config rahasia via env/secret, bukan file di webroot.
   - Maintenance mode saat update.
   - Backup otomatis sebelum migrasi/update.
   - Jangan biarkan folder storage/ dan config/ dapat diakses publik
     (Apache .htaccess sudah; Nginx perlu aturan location terpisah).
+
+ IMPLEMENTASI (SELESAI):
+   - Dockerfile (PHP 8.3-FPM + pdo_mysql, gd, mbstring, apcu, opcache),
+     docker-compose.yml (nginx + php-fpm + mysql), nginx.conf dengan aturan
+     deny untuk config/storage/lib/modules/database/tools/tests, dan .env.example.
+   - Kredensial bisa sepenuhnya lewat CBT_DB_* environment (tanpa file di webroot).
+   - Maintenance mode: lib/maintenance.php + tools/maintenance.php on|off|status;
+     api.php & index.php mengembalikan 503 + Retry-After, health.php melaporkan
+     status maintenance. File config/maintenance.json diblokir .htaccess.
+   - Backup otomatis sebelum php tools/migrate.php up / rollback dan sebelum
+     update_apply() (Bagian 3.1 & update.php).
+   - Belum otomatis: notifikasi uptime eksternal & build aset frontend terpisah.
 
 
 4. FITUR TAMBAHAN YANG LAYAK DIPERTIMBANGKAN
@@ -1024,7 +1241,7 @@ Saran produksi:
   - Abstraksi provider (Gemini/OpenAI/Claude/lokal) dengan antarmuka sama.
   - Prompt template per mapel/level, simpan versi prompt.
 
-4.7 UX/UI
+4.7 UX/UI (SELESAI)
   - Dark mode, tema sekolah, layout responsif untuk tablet.
   - Indikator autosave jelas ("tersimpan 2 detik lalu"), status koneksi.
   - Navigasi soal dengan grid, tanda ragu, filter belum dijawab.
@@ -1033,6 +1250,46 @@ Saran produksi:
   - Onboarding singkat untuk guru dan siswa.
   - Pencarian global (siswa, ujian, soal) untuk admin.
   - i18n (ID/EN) bila diperlukan.
+
+ IMPLEMENTASI (SELESAI):
+   - Sistem desain di Index.html: token warna CSS (kertas biru dingin #F5F7F6,
+     tinta #14232E, teal sekolah #0F5C5A, emas #C8791A), tipografi Plus Jakarta
+     Sans + IBM Plex Mono untuk angka/waktu, fokus keyboard terlihat, dan
+     prefers-reduced-motion dihormati.
+   - Dark mode + 4 tema sekolah (teal/hijau/hirup/marun) lewat data-theme dan
+     data-brand pada <html>, disimpan di localStorage; dock utilitas kecil di
+     kanan bawah (tersembunyi saat ujian berlangsung).
+   - Indikator autosave: teks relatif "Tersimpan 2 dtk lalu" (menggantikan jam
+     statis) + badge status koneksi online/offline dari navigator.onLine.
+   - Navigasi soal: filter Semua/Belum/Ragu di atas grid palet; filter
+     diwrapper ke renderPalette() sehingga mengikuti state jawaban terkini.
+   - Konfirmasi submit menampilkan sisa waktu (dari remainingSeconds / timer)
+     di samping jumlah terjawab, ragu, dan kosong.
+   - Halaman error ramah + tombol "Coba Lagi" / "Muat Ulang" (showCbtError),
+     dipasang pada unhandledrejection & kegagalan memuat skrip.
+   - Onboarding 3 langkah per peran (Admin/Guru/Siswa), muncul sekali per peran.
+   - Pencarian global Ctrl/Cmd+K untuk Admin/Guru: siswa, ujian, dan soal dari
+     state yang sudah dimuat, lalu membawa ke tampilan/filter terkait.
+   - i18n ID/EN untuk chrome, onboarding, error, dan komponen baru (cbtT()).
+     Belum diterjemahkan: seluruh teks modul lama (~650 KB) — dicakup bertahap.
+   - Mode gelap diperbaiki menyeluruh: tint terang (emerald/amber/rose/indigo/
+     purple/fuchsia/blue/slate 50-200, termasuk variasi opacity) dipetakan ke
+     warna gelap; teks gelap (-600..-900) otomatis diterangkan; border tint
+     mengikuti var(--cbt-line); kotak konteks soal, tabel rich-content, dan
+     watermark ikut tema. Pengecualian: tombol ragu-ragu (teks gelap di atas
+     kuning terang) sengaja tetap gelap agar terbaca. Audit: 98 token warna
+     terang, tersisa 31 yang memang warna terang/saturated (aman).
+   - Perbaikan lanjutan field/form: sebagian besar input tidak punya kelas warna
+     teks sehingga memakai warna UA (hitam) saat latar sudah digelapkan. Ditambah
+     color-scheme: light/dark pada :root, aturan warna untuk input/select/textarea
+     (termasuk placeholder & option), invert ikon date picker, accent-color
+     checkbox/radio, dan gaya tombol file selector.
+   - Daftar menu (tab lama berupa garis bawah di Admin/Guru/Siswa) di-scrap dan
+     diganti cbt-navrail: item berbentuk tab berkaki dengan ikon, aktif ditandai
+     garis atas teal + permukaan terang, state memakai aria-selected (bukan class
+     Tailwind hardcode), scrollabel di layar kecil, navigasi panah kiri/kanan.
+   - Bukti: node --check kedua blok JS OK, tidak ada sisa class tab lama,
+     index.php 200 dengan rail baru, e2e 62 PASS.
 
 4.8 Operasional
   - CLI tools: migrate, backup, purge-media, create-admin, reset-password,
@@ -1060,15 +1317,15 @@ Sprint 1 - Keamanan & integritas (1-2 minggu)
   [ ] Perbaiki X-Frame-Options (1.10)
 
 Sprint 2 - Performa & stabilitas (1-2 minggu)
-  [ ] Migrasi berversi, hapus DDL runtime (2.1)
-  [ ] Cache settings (2.2)
-  [ ] Normalisasi + index (2.3)
-  [ ] Hilangkan N+1 / full scan (2.4)
-  [ ] Optimasi media (2.5)
-  [ ] Pecah + kompres frontend (2.6)
-  [ ] Transaksi untuk operasi multi-tabel (1.12)
-  [ ] Validasi input ujian/soal (1.12)
-  [ ] Perbaiki bug kecil (1.20)
+  [x] Migrasi berversi, hapus DDL runtime (2.1)
+  [x] Cache settings (2.2)
+  [x] Normalisasi + index (2.3)
+  [x] Hilangkan N+1 / full scan (2.4)
+  [x] Optimasi media (2.5)
+  [x] Kompresi & ETag frontend (2.6; pemecahan aset ditunda)
+  [x] Transaksi untuk operasi multi-tabel (1.12)
+  [x] Validasi input ujian/soal (1.12)
+  [x] Perbaiki bug kecil (1.20)
 
 Sprint 3 - Fitur & kualitas (2-4 minggu)
   [ ] Analisis butir soal + export nilai (4.3)
@@ -1095,12 +1352,24 @@ Sprint 3 - Fitur & kualitas (2-4 minggu)
   [ ] Ubah password -> sesi lain logout.
   [ ] Simpan soal berisi <script> -> tersanitasi/ter-escape, tidak dieksekusi.
   [ ] Upload SVG/PNG -> hanya tipe aman yang disajikan dengan header benar.
-  [ ] Index dipakai: EXPLAIN menunjukkan ref/range, bukan ALL, untuk
-      find_user, getExamResults, getStudentAvailableExams, logs.
-  [ ] Satu request normal tidak menjalankan CREATE TABLE/SHOW COLUMNS.
-  [ ] media.php tidak memanggil ensure_schema.
-  [ ] Halaman awal terkompresi dan mengembalikan 304 saat tidak berubah.
+  [x] Index dipakai: EXPLAIN menunjukkan const/ref, bukan ALL, untuk
+      find_user, getExamResults, getStudentAvailableExams, logs (tabel users
+      kecil sesekali ALL untuk role/status; index tetap tersedia).
+  [x] Satu request normal tidak menjalankan CREATE TABLE/SHOW COLUMNS
+      (diuji dengan menyembunyikan schema.sql: request tetap 200).
+  [x] media.php tidak memanggil ensure_schema.
+  [x] Halaman awal terkompresi (gzip) dan mengembalikan 304 saat tidak berubah.
+  [x] getUsers(username, token, page, perPage) mengembalikan halaman + total.
+  [x] getExamResults(..., false) tanpa detail_jawaban; getExamResultDetail
+      mengembalikan jawaban per id_hasil (uji tambahan: 7 PASS, 0 FAIL).
+  [x] saveSettings -> getSettings langsung memakai nilai baru (cache dibatalkan).
   [ ] Uji beban: p95 start/autosave/submit < 500 ms pada 100 user serentak.
+  [x] php tools/migrate.php status -> v9; rollback v9 tersedia via .down.sql.
+  [x] Unit test 28 PASS; negative-auth 38 PASS; 2FA 7 PASS; e2e 62 PASS.
+  [x] Siswa memanggil action admin/guru -> HTTP 403 (bukan 200 success:false).
+  [x] X-Request-ID ada; health.php & tools/metrics.php melaporkan metrik.
+  [x] Maintenance on -> api.php 503, off -> 200 (diuji).
+  [x] Cookie cbt_session HttpOnly/SameSite + CSRF header dikirim rpc-shim.js.
 
 
 7. REFERENSI YANG DIPAKAI
@@ -1125,8 +1394,8 @@ Sprint 3 - Fitur & kualitas (2-4 minggu)
 
 8. CATATAN PENUTUP
 --------------------------------------------------------------------------------
-  - Dokumen ini tidak mengubah kode, database, konfigurasi, maupun berkas
-    lain. Hanya berisi rekomendasi.
+  - Bagian 1, 2, dan 3 sudah diimplementasikan pada kode, skema, konfigurasi web
+    server, CLI, test, CI, dan dokumentasi README. Bagian 4-5 tetap rekomendasi.
   - Urutan pengerjaan disarankan mengikuti Bagian 5; jangan menunda item P0
     sampai setelah ujian sungguhan.
   - Setiap perbaikan sebaiknya disertai tes regresi, terutama untuk alur

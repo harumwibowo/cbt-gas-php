@@ -107,7 +107,7 @@ function getStudentAvailableExams($username, $token): array
         // Riwayat pengerjaan siswa (tiap baris = satu percobaan)
         $studentAttempts = [];
         $rRows = db_all(
-            'SELECT * FROM results WHERE LOWER(TRIM(username_siswa)) = ? ORDER BY id_hasil ASC',
+            'SELECT * FROM results WHERE username_siswa = ? ORDER BY id_hasil ASC',
             [$userLower]
         );
         foreach ($rRows as $row) {
@@ -336,7 +336,7 @@ function getStudentExamReview($username, $token, $id_ujian): array
     }
 
     try {
-        $examRow = db_one('SELECT * FROM exams WHERE TRIM(id_ujian) = ?', [$targetExamId]);
+        $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$targetExamId]);
         if (!$examRow) {
             return err('Ujian tidak ditemukan.');
         }
@@ -352,7 +352,7 @@ function getStudentExamReview($username, $token, $id_ujian): array
         // Hasil siswa: pakai percobaan dengan nilai tertinggi
         $uLower = strtolower(trim(tostr($username)));
         $rows = db_all(
-            'SELECT * FROM results WHERE TRIM(id_ujian) = ? AND LOWER(TRIM(username_siswa)) = ? ORDER BY id_hasil ASC',
+            'SELECT * FROM results WHERE id_ujian = ? AND username_siswa = ? ORDER BY id_hasil ASC',
             [$targetExamId, $uLower]
         );
 
@@ -404,7 +404,7 @@ function getStudentExamReview($username, $token, $id_ujian): array
         }
 
         $textMap = exam_text_map($targetExamId);
-        $qRows = db_all('SELECT * FROM questions WHERE TRIM(id_ujian) = ? ORDER BY urutan ASC, id_soal ASC', [$targetExamId]);
+        $qRows = db_all('SELECT * FROM questions WHERE id_ujian = ? ORDER BY urutan ASC, id_soal ASC', [$targetExamId]);
 
         $benar = 0;
         $salah = 0;
@@ -514,7 +514,7 @@ function find_result_record(string $idUjian, string $username, $percobaanKe = nu
     }
 
     $rows = db_all(
-        'SELECT * FROM results WHERE TRIM(id_ujian) = ? AND LOWER(TRIM(username_siswa)) = ? ORDER BY id_hasil ASC',
+        'SELECT * FROM results WHERE id_ujian = ? AND username_siswa = ? ORDER BY id_hasil ASC',
         [$targetExamId, $targetUsername]
     );
     if (count($rows) === 0) {

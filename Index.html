@@ -10,7 +10,7 @@
   <!-- Google Fonts: Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
   <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- SheetJS (xlsx) CDN for Excel Import & Template Download -->
@@ -192,6 +192,345 @@
         size: A4 portrait;
         margin: 10mm 15mm 12mm 15mm;
       }
+    }
+
+    /* ================================================================
+       CBT UX DESIGN SYSTEM — Bagian 4.7
+       Identitas: kertas biru dingin + tinta + teal sekolah + emas.
+       Tipografi: Plus Jakarta Sans (UI) + IBM Plex Mono (angka/waktu).
+       ================================================================ */
+    :root {
+      color-scheme: light;
+      --cbt-bg: #F5F7F6;
+      --cbt-surface: #FFFFFF;
+      --cbt-surface-2: #EDF2F0;
+      --cbt-ink: #14232E;
+      --cbt-muted: #63757A;
+      --cbt-line: #DCE4E1;
+      --cbt-brand: #0F5C5A;
+      --cbt-brand-strong: #0A4745;
+      --cbt-brand-soft: #E4F1EE;
+      --cbt-brand-line: #B8D8D2;
+      --cbt-onbrand: #FFFFFF;
+      --cbt-accent: #C8791A;
+      --cbt-danger: #B42318;
+      --cbt-focus: #C8791A;
+      --cbt-shadow: 0 1px 2px rgba(20,35,46,.05), 0 8px 24px rgba(20,35,46,.06);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cbt-bg: #101B22;
+      --cbt-surface: #17262E;
+      --cbt-surface-2: #1E303A;
+      --cbt-ink: #E7EFEA;
+      --cbt-muted: #9FB1B3;
+      --cbt-line: #2B414B;
+      --cbt-brand: #5AD1C2;
+      --cbt-brand-strong: #8FE4D8;
+      --cbt-brand-soft: #183537;
+      --cbt-brand-line: #2E5E5B;
+      --cbt-onbrand: #08201F;
+      --cbt-accent: #F2B95E;
+      --cbt-danger: #FF8A7A;
+      --cbt-focus: #F2B95E;
+      --cbt-shadow: 0 1px 2px rgba(0,0,0,.2), 0 12px 32px rgba(0,0,0,.24);
+    }
+    /* Tema sekolah: variasi warna dasar, tetap memakai peran warna yang sama. */
+    html[data-brand="hijau"] { --cbt-brand:#1B6B3A; --cbt-brand-strong:#14512C; --cbt-brand-soft:#E6F3EA; --cbt-brand-line:#B9D9C5; }
+    html[data-brand="hirup"] { --cbt-brand:#2B5F9E; --cbt-brand-strong:#1D4778; --cbt-brand-soft:#E7F0FA; --cbt-brand-line:#BFD4EC; }
+    html[data-brand="marun"] { --cbt-brand:#8A3540; --cbt-brand-strong:#6B2730; --cbt-brand-soft:#F7EAEC; --cbt-brand-line:#E3C1C6; }
+    html[data-theme="dark"][data-brand="hijau"] { --cbt-brand:#73D69A; --cbt-brand-strong:#A6E8BF; --cbt-brand-soft:#17352A; --cbt-brand-line:#2F6547; }
+    html[data-theme="dark"][data-brand="hirup"] { --cbt-brand:#7FB6F2; --cbt-brand-strong:#AAD2FA; --cbt-brand-soft:#182C42; --cbt-brand-line:#33557C; }
+    html[data-theme="dark"][data-brand="marun"] { --cbt-brand:#E79AA2; --cbt-brand-strong:#F3C1C6; --cbt-brand-soft:#3A2227; --cbt-brand-line:#6C3D45; }
+
+    body { background: var(--cbt-bg); color: var(--cbt-ink); }
+    .cbt-mono, #exam-timer {
+      font-family: 'IBM Plex Mono', ui-monospace, monospace !important;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .02em;
+    }
+
+    /* ==================================================================
+       MODE GELAP — pemetaan lengkap.
+       Permukaan netral + tint warna + teksnya harus berubah bersamaan.
+       Tombol saturasi (-500/-600) sengaja dibiarkan (sudah kontras).
+       ================================================================== */
+    html[data-theme="dark"] .bg-white,
+    html[data-theme="dark"] .bg-white\/95,
+    html[data-theme="dark"] [class*="bg-white\/"] { background-color: var(--cbt-surface) !important; }
+    html[data-theme="dark"] .bg-slate-50,
+    html[data-theme="dark"] .bg-slate-100,
+    html[data-theme="dark"] .bg-slate-200,
+    html[data-theme="dark"] .bg-slate-300,
+    html[data-theme="dark"] [class*="bg-slate-50/"],
+    html[data-theme="dark"] [class*="bg-slate-100/"],
+    html[data-theme="dark"] [class*="bg-slate-200/"],
+    html[data-theme="dark"] .bg-gray-50,
+    html[data-theme="dark"] .bg-sky-50,
+    html[data-theme="dark"] .bg-blue-50 { background-color: var(--cbt-surface-2) !important; }
+
+    /* Tint warna -> versi gelap yang masih terbaca */
+    html[data-theme="dark"] .bg-emerald-50,
+    html[data-theme="dark"] .bg-emerald-100,
+    html[data-theme="dark"] .bg-emerald-200,
+    html[data-theme="dark"] [class*="bg-emerald-50/"],
+    html[data-theme="dark"] [class*="bg-emerald-100/"] { background-color: #12392F !important; }
+    html[data-theme="dark"] .bg-amber-50,
+    html[data-theme="dark"] .bg-amber-100,
+    html[data-theme="dark"] [class*="bg-amber-50/"],
+    html[data-theme="dark"] [class*="bg-amber-100/"] { background-color: #3A2C16 !important; }
+    html[data-theme="dark"] .bg-red-50,
+    html[data-theme="dark"] .bg-rose-50,
+    html[data-theme="dark"] .bg-rose-100,
+    html[data-theme="dark"] .bg-rose-200,
+    html[data-theme="dark"] [class*="bg-rose-50/"] { background-color: #3A2024 !important; }
+    html[data-theme="dark"] .bg-fuchsia-50,
+    html[data-theme="dark"] .bg-fuchsia-100,
+    html[data-theme="dark"] .bg-fuchsia-200,
+    html[data-theme="dark"] [class*="bg-fuchsia-50/"],
+    html[data-theme="dark"] [class*="bg-fuchsia-200/"] { background-color: #34243E !important; }
+    html[data-theme="dark"] .bg-indigo-50,
+    html[data-theme="dark"] .bg-indigo-100,
+    html[data-theme="dark"] .bg-purple-50,
+    html[data-theme="dark"] .bg-purple-100,
+    html[data-theme="dark"] [class*="bg-indigo-50/"],
+    html[data-theme="dark"] [class*="bg-purple-50/"] { background-color: var(--cbt-brand-soft) !important; }
+
+    /* Teks netral */
+    html[data-theme="dark"] .text-slate-900,
+    html[data-theme="dark"] .text-slate-800,
+    html[data-theme="dark"] .text-slate-700,
+    html[data-theme="dark"] .text-slate-600 { color: var(--cbt-ink) !important; }
+    html[data-theme="dark"] .text-slate-500,
+    html[data-theme="dark"] .text-slate-400 { color: var(--cbt-muted) !important; }
+    html[data-theme="dark"] .text-slate-300 { color: #D3DEE0 !important; }
+    html[data-theme="dark"] .divide-slate-100 > * + *,
+    html[data-theme="dark"] .divide-slate-200 > * + * { border-color: var(--cbt-line); }
+    html[data-theme="dark"] .placeholder\:text-slate-400::placeholder,
+    html[data-theme="dark"] [class*="placeholder:text-slate-400"]::placeholder { color: var(--cbt-muted); }
+
+    /* --- Kontrol form: teks mengikuti tema, bukan warna bawaan browser ----- */
+    html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="hidden"]),
+    html[data-theme="dark"] select,
+    html[data-theme="dark"] textarea {
+      color: var(--cbt-ink);
+      background-color: var(--cbt-surface);
+      border-color: var(--cbt-line);
+    }
+    html[data-theme="dark"] input::placeholder,
+    html[data-theme="dark"] textarea::placeholder {
+      color: var(--cbt-muted) !important;
+      opacity: 1;
+    }
+    html[data-theme="dark"] option {
+      background-color: var(--cbt-surface);
+      color: var(--cbt-ink);
+    }
+    html[data-theme="dark"] input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .75; }
+    input[type="checkbox"], input[type="radio"] { accent-color: var(--cbt-brand); }
+    input[type="file"]::file-selector-button {
+      background: var(--cbt-brand-soft); color: var(--cbt-brand);
+      border: 1px solid var(--cbt-line); border-radius: 8px;
+      padding: 6px 10px; margin-right: 10px; cursor: pointer;
+    }
+
+    /* Teks warna gelap -> versi terang di atas tint gelap */
+    html[data-theme="dark"] .text-emerald-700,
+    html[data-theme="dark"] .text-emerald-800,
+    html[data-theme="dark"] .text-emerald-600 { color: #6EE7B7 !important; }
+    html[data-theme="dark"] .text-amber-900,
+    html[data-theme="dark"] .text-amber-800,
+    html[data-theme="dark"] .text-amber-700,
+    html[data-theme="dark"] .text-amber-600,
+    html[data-theme="dark"] [class*="text-amber-800/"] { color: #F5C86B !important; }
+    html[data-theme="dark"] .text-red-600,
+    html[data-theme="dark"] .text-red-500,
+    html[data-theme="dark"] .text-rose-800,
+    html[data-theme="dark"] .text-rose-700,
+    html[data-theme="dark"] .text-rose-600,
+    html[data-theme="dark"] .text-rose-500 { color: #FCA5A5 !important; }
+    html[data-theme="dark"] .text-blue-700,
+    html[data-theme="dark"] .text-blue-600,
+    html[data-theme="dark"] .text-sky-600 { color: #93C5FD !important; }
+    html[data-theme="dark"] .text-fuchsia-900,
+    html[data-theme="dark"] .text-fuchsia-800,
+    html[data-theme="dark"] .text-fuchsia-700,
+    html[data-theme="dark"] .text-fuchsia-600 { color: #E9D5FF !important; }
+    html[data-theme="dark"] .text-indigo-800,
+    html[data-theme="dark"] .text-indigo-700,
+    html[data-theme="dark"] .text-purple-800,
+    html[data-theme="dark"] .text-purple-700,
+    html[data-theme="dark"] .text-purple-900 { color: var(--cbt-brand-strong) !important; }
+
+    /* Border tint mengikuti garis tema supaya tidak hilang */
+    html[data-theme="dark"] .border-slate-100,
+    html[data-theme="dark"] [class*="border-slate-100/"],
+    html[data-theme="dark"] .border-slate-200,
+    html[data-theme="dark"] [class*="border-slate-200/"],
+    html[data-theme="dark"] .border-slate-300,
+    html[data-theme="dark"] .border-emerald-100,
+    html[data-theme="dark"] .border-emerald-200,
+    html[data-theme="dark"] .border-amber-100,
+    html[data-theme="dark"] .border-amber-200,
+    html[data-theme="dark"] [class*="border-amber-200/"],
+    html[data-theme="dark"] .border-rose-100,
+    html[data-theme="dark"] .border-rose-200,
+    html[data-theme="dark"] .border-fuchsia-100,
+    html[data-theme="dark"] .border-fuchsia-200,
+    html[data-theme="dark"] .border-indigo-100,
+    html[data-theme="dark"] .border-indigo-200,
+    html[data-theme="dark"] .border-purple-100,
+    html[data-theme="dark"] .border-purple-200 { border-color: var(--cbt-line) !important; }
+
+    /* Blok kandungan soal memakai warna hardcoded — sesuaikan di gelap */
+    html[data-theme="dark"] .q-context-box {
+      background-color: #3A2C16 !important;
+      border-color: #6B5224 !important;
+      border-left-color: var(--cbt-accent) !important;
+    }
+    html[data-theme="dark"] .q-context-title { color: #F5C86B !important; }
+    html[data-theme="dark"] .q-context-body { color: var(--cbt-ink) !important; }
+    html[data-theme="dark"] .q-rich-content th,
+    html[data-theme="dark"] .q-rich-table th {
+      background-color: var(--cbt-surface-2) !important;
+      color: var(--cbt-ink) !important;
+    }
+    html[data-theme="dark"] .q-rich-content td,
+    html[data-theme="dark"] .q-rich-table td,
+    html[data-theme="dark"] .q-rich-content tbody tr:nth-child(even) td { background-color: transparent; }
+    html[data-theme="dark"] .watermark-text { color: var(--cbt-ink); }
+    /* Tombol ragu-ragu: teks gelap di atas kuning terang harus tetap gelap. */
+    html[data-theme="dark"] .bg-amber-400.text-slate-900,
+    html[data-theme="dark"] .bg-amber-500.text-slate-900 { color: #14232E !important; }
+
+    /* Aksen merek: teal menggantikan ungu/indigo bawaan di seluruh UI. */
+    .bg-purple-600, .bg-purple-700, .bg-indigo-600, .bg-indigo-700,
+    .hover\:bg-purple-700:hover, .hover\:bg-indigo-700:hover {
+      background-color: var(--cbt-brand) !important;
+      color: var(--cbt-onbrand) !important;
+    }
+    .bg-purple-50, .bg-indigo-50, .bg-purple-100, .bg-indigo-100 {
+      background-color: var(--cbt-brand-soft) !important;
+    }
+    .border-purple-200, .border-indigo-200, .border-purple-300, .border-indigo-300 {
+      border-color: var(--cbt-brand-line) !important;
+    }
+    .text-purple-600, .text-purple-700, .text-indigo-600, .text-indigo-700 {
+      color: var(--cbt-brand) !important;
+    }
+    .ring-purple-600 { --tw-ring-color: var(--cbt-brand) !important; }
+    .focus\:ring-purple-500:focus, .focus\:ring-indigo-500:focus {
+      --tw-ring-color: var(--cbt-focus) !important;
+    }
+
+    :focus-visible { outline: 2px solid var(--cbt-focus); outline-offset: 2px; border-radius: 8px; }
+
+    /* --- Rail menu baru (menggantikan tab underline lama) ------------------ */
+    .cbt-navrail {
+      display: flex; gap: 4px; align-items: flex-end;
+      padding: 6px 6px 0; margin: 0 0 18px;
+      background: var(--cbt-surface-2);
+      border: 1px solid var(--cbt-line);
+      border-bottom: 1px solid var(--cbt-line);
+      border-radius: 16px 16px 0 0;
+      overflow-x: auto; scrollbar-width: none;
+      scroll-snap-type: x proximity;
+    }
+    .cbt-navrail::-webkit-scrollbar { display: none; }
+    .cbt-navitem {
+      position: relative; flex: 0 0 auto; scroll-snap-align: start;
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 15px;
+      border: 1px solid transparent; border-bottom: none;
+      border-radius: 12px 12px 0 0;
+      background: transparent; color: var(--cbt-muted);
+      font-size: .8rem; font-weight: 700; white-space: nowrap;
+      cursor: pointer;
+      transition: background .16s ease, color .16s ease;
+    }
+    .cbt-navitem svg { width: 16px; height: 16px; opacity: .75; }
+    .cbt-navitem:hover { background: var(--cbt-brand-soft); color: var(--cbt-brand); }
+    .cbt-navitem:hover svg { opacity: 1; }
+    .cbt-navitem[aria-selected="true"] {
+      background: var(--cbt-surface);
+      color: var(--cbt-brand);
+      border-color: var(--cbt-line);
+      box-shadow: inset 0 2px 0 var(--cbt-brand);
+    }
+    .cbt-navitem[aria-selected="true"] svg { opacity: 1; }
+    .cbt-navitem:focus-visible { outline: 2px solid var(--cbt-focus); outline-offset: -3px; }
+    @media (max-width: 640px) {
+      .cbt-navitem { padding: 10px 12px; font-size: .76rem; }
+      .cbt-navrail { margin-bottom: 14px; }
+    }
+
+    /* Dock utilitas & komponen UX baru */
+    .cbt-dock {
+      position: fixed; right: 16px; bottom: 16px; z-index: 45;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .cbt-dock button {
+      width: 44px; height: 44px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--cbt-surface); color: var(--cbt-ink);
+      border: 1px solid var(--cbt-line); box-shadow: var(--cbt-shadow);
+      transition: transform .16s ease, background .16s ease;
+    }
+    .cbt-dock button:hover { transform: translateY(-2px); background: var(--cbt-brand-soft); }
+    .cbt-dock .cbt-dock-main { background: var(--cbt-brand); color: var(--cbt-onbrand); border-color: transparent; }
+    .cbt-overlay {
+      position: fixed; inset: 0; z-index: 60;
+      background: rgba(16,27,34,.55); backdrop-filter: blur(6px);
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 8vh 16px 16px; overflow-y: auto;
+    }
+    .cbt-overlay[hidden] { display: none; }
+    .cbt-panel {
+      width: 100%; max-width: 560px; border-radius: 22px;
+      background: var(--cbt-surface); color: var(--cbt-ink);
+      border: 1px solid var(--cbt-line); box-shadow: var(--cbt-shadow);
+      padding: 28px;
+    }
+    .cbt-panel h2 { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px; }
+    .cbt-panel p { color: var(--cbt-muted); font-size: .875rem; line-height: 1.6; }
+    .cbt-panel input {
+      width: 100%; border: 1px solid var(--cbt-line); background: var(--cbt-surface-2);
+      color: var(--cbt-ink); border-radius: 14px; padding: 12px 14px; font-size: .9rem;
+    }
+    .cbt-step {
+      display: grid; grid-template-columns: 34px 1fr; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--cbt-line);
+    }
+    .cbt-step:last-of-type { border-bottom: 0; }
+    .cbt-step-num {
+      width: 34px; height: 34px; border-radius: 11px;
+      background: var(--cbt-brand-soft); color: var(--cbt-brand);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: .8rem;
+    }
+    .cbt-result {
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+      padding: 11px 12px; border-radius: 12px; border: 1px solid transparent;
+    }
+    .cbt-result:hover, .cbt-result:focus-visible { background: var(--cbt-brand-soft); border-color: var(--cbt-brand-line); }
+    .cbt-chip {
+      border: 1px solid var(--cbt-line); background: var(--cbt-surface);
+      color: var(--cbt-muted); border-radius: 999px; padding: 5px 12px;
+      font-size: .7rem; font-weight: 700;
+    }
+    .cbt-chip[aria-pressed="true"] { background: var(--cbt-brand); color: var(--cbt-onbrand); border-color: transparent; }
+    .cbt-connection { display: inline-flex; align-items: center; gap: 6px; font-size: .68rem; font-weight: 700; }
+    .cbt-connection i { width: 7px; height: 7px; border-radius: 50%; background: #16A34A; }
+    .cbt-connection.offline i { background: #DC2626; }
+    .cbt-error-mark { width: 56px; height: 56px; border-radius: 18px; background: var(--cbt-brand-soft); color: var(--cbt-brand); display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+
+    @media (max-width: 1024px) {
+      .cbt-dock { bottom: 12px; right: 12px; }
+      .cbt-panel { padding: 22px; }
+      #exam-palette-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
     }
   </style>
 </head>
@@ -507,29 +846,15 @@
         </div>
       </div>
 
-      <!-- Tabs Nav -->
-      <div class="border-b border-slate-200 flex gap-6 text-sm font-bold overflow-x-auto">
-        <button onclick="switchAdminTab('users')" id="tab-btn-users" class="pb-3 border-b-2 border-indigo-600 text-indigo-600 transition flex items-center gap-2 whitespace-nowrap">
-          <i data-lucide="users" class="w-4 h-4"></i> Pengguna
-        </button>
-        <button onclick="switchAdminTab('login')" id="tab-btn-login" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 whitespace-nowrap">
-          <i data-lucide="log-in" class="w-4 h-4"></i> Login Siswa
-        </button>
-        <button onclick="switchAdminTab('sesi')" id="tab-btn-sesi" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 whitespace-nowrap">
-          <i data-lucide="clock" class="w-4 h-4"></i> Sesi Ujian
-        </button>
-        <button onclick="switchAdminTab('exams')" id="tab-btn-exams" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 whitespace-nowrap">
-          <i data-lucide="layers" class="w-4 h-4"></i> Daftar Ujian
-        </button>
-        <button onclick="switchAdminTab('results')" id="tab-btn-results" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 whitespace-nowrap">
-          <i data-lucide="bar-chart-2" class="w-4 h-4"></i> Rekap Ujian
-        </button>
-        <button onclick="switchAdminTab('logs')" id="tab-btn-logs" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 whitespace-nowrap">
-          <i data-lucide="file-text" class="w-4 h-4"></i> Log
-        </button>
-        <button onclick="switchAdminTab('settings')" id="tab-btn-settings" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 whitespace-nowrap">
-          <i data-lucide="settings" class="w-4 h-4"></i> Pengaturan
-        </button>
+      <!-- Rail Menu Administrator -->
+      <div class="cbt-navrail" role="tablist" aria-label="Menu Administrator">
+        <button type="button" role="tab" aria-selected="true" data-tab="users" onclick="switchAdminTab('users')" id="tab-btn-users" class="cbt-navitem"><i data-lucide="users"></i><span>Pengguna</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="login" onclick="switchAdminTab('login')" id="tab-btn-login" class="cbt-navitem"><i data-lucide="log-in"></i><span>Login Siswa</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="sesi" onclick="switchAdminTab('sesi')" id="tab-btn-sesi" class="cbt-navitem"><i data-lucide="clock"></i><span>Sesi Ujian</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="exams" onclick="switchAdminTab('exams')" id="tab-btn-exams" class="cbt-navitem"><i data-lucide="layers"></i><span>Daftar Ujian</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="results" onclick="switchAdminTab('results')" id="tab-btn-results" class="cbt-navitem"><i data-lucide="bar-chart-2"></i><span>Rekap Ujian</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="logs" onclick="switchAdminTab('logs')" id="tab-btn-logs" class="cbt-navitem"><i data-lucide="file-text"></i><span>Log</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="settings" onclick="switchAdminTab('settings')" id="tab-btn-settings" class="cbt-navitem"><i data-lucide="settings"></i><span>Pengaturan</span></button>
       </div>
 
       <!-- Tab: Users -->
@@ -1330,20 +1655,11 @@
         </div>
       </div>
 
-      <!-- Tabs Nav -->
-      <div class="border-b border-slate-200 flex gap-6 text-sm font-bold">
-        <button onclick="switchGuruTab('exams')" id="tab-guru-exams" class="pb-3 border-b-2 border-purple-600 text-purple-600 transition flex items-center gap-2">
-          <i data-lucide="layers" class="w-4 h-4"></i>
-          <span>Daftar Ujian</span>
-        </button>
-        <button onclick="switchGuruTab('results')" id="tab-guru-results" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2">
-          <i data-lucide="bar-chart-2" class="w-4 h-4"></i>
-          <span>Rekapitulasi Nilai</span>
-        </button>
-        <button onclick="switchGuruTab('login')" id="tab-guru-login" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2">
-          <i data-lucide="log-in" class="w-4 h-4"></i>
-          <span>Login Siswa</span>
-        </button>
+      <!-- Rail Menu Guru -->
+      <div class="cbt-navrail" role="tablist" aria-label="Menu Guru">
+        <button type="button" role="tab" aria-selected="true" data-tab="exams" onclick="switchGuruTab('exams')" id="tab-guru-exams" class="cbt-navitem"><i data-lucide="layers"></i><span>Daftar Ujian</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="results" onclick="switchGuruTab('results')" id="tab-guru-results" class="cbt-navitem"><i data-lucide="bar-chart-2"></i><span>Rekapitulasi Nilai</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="login" onclick="switchGuruTab('login')" id="tab-guru-login" class="cbt-navitem"><i data-lucide="log-in"></i><span>Login Siswa</span></button>
       </div>
 
       <!-- Tab 1: Daftar Ujian -->
@@ -2813,16 +3129,10 @@
 
     <!-- Main Content -->
     <main class="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full space-y-6">
-      <!-- Tabs Nav -->
-      <div class="border-b border-slate-200 flex gap-6 text-sm font-bold">
-        <button onclick="switchStudentTab('exams')" id="tab-student-exams" class="pb-3 border-b-2 border-emerald-600 text-emerald-600 transition flex items-center gap-2">
-          <i data-lucide="layers" class="w-4 h-4"></i>
-          <span>Daftar Ujian Aktif</span>
-        </button>
-        <button onclick="switchStudentTab('grades')" id="tab-student-grades" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2">
-          <i data-lucide="award" class="w-4 h-4"></i>
-          <span>Riwayat & Nilai</span>
-        </button>
+      <!-- Rail Menu Siswa -->
+      <div class="cbt-navrail" role="tablist" aria-label="Menu Siswa">
+        <button type="button" role="tab" aria-selected="true" data-tab="exams" onclick="switchStudentTab('exams')" id="tab-student-exams" class="cbt-navitem"><i data-lucide="layers"></i><span>Daftar Ujian Aktif</span></button>
+        <button type="button" role="tab" aria-selected="false" data-tab="grades" onclick="switchStudentTab('grades')" id="tab-student-grades" class="cbt-navitem"><i data-lucide="award"></i><span>Riwayat &amp; Nilai</span></button>
       </div>
 
       <!-- Tab 1: Daftar Ujian Aktif -->
@@ -3029,6 +3339,11 @@
             </span>
           </div>
 
+          <!-- Status koneksi (Bagian 4.7) -->
+          <span id="cbt-connection" class="cbt-connection" title="Status koneksi ke server">
+            <i></i><span id="cbt-connection-text">Tersambung</span>
+          </span>
+
           <!-- Violations Counter Badge -->
           <div id="exam-violations-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-50 border border-slate-200 text-slate-500">
             <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
@@ -3108,6 +3423,13 @@
           <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-purple-600"></i> Navigasi Soal
         </h3>
 
+        <!-- Filter navigasi soal (Bagian 4.7) -->
+        <div id="cbt-palette-filter" class="flex flex-none gap-1.5 mb-2.5" role="group" aria-label="Filter navigasi soal">
+          <button type="button" class="cbt-chip" data-filter="all" aria-pressed="true">Semua</button>
+          <button type="button" class="cbt-chip" data-filter="empty" aria-pressed="false">Belum</button>
+          <button type="button" class="cbt-chip" data-filter="doubt" aria-pressed="false">Ragu</button>
+        </div>
+
         <!-- Grid Nomor Soal: scroll internal bila jumlah soal sangat banyak -->
         <div id="exam-palette-scroll" class="flex-1 min-h-0 overflow-y-auto pr-0.5">
           <div id="exam-palette-grid" class="grid grid-cols-6 sm:grid-cols-8 lg:grid-cols-5 gap-1.5 sm:gap-2">
@@ -3163,6 +3485,8 @@
           <p id="confirm-stat-empty" class="text-xl font-black text-red-500">0</p>
         </div>
       </div>
+
+      <p id="confirm-time-left" class="cbt-mono text-center text-xs font-bold mb-5" style="color:var(--cbt-brand)"></p>
 
       <div class="flex gap-3">
         <button onclick="closeSubmitModal()" class="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">
@@ -4190,6 +4514,32 @@
             try { lucide.createIcons(); } catch(e){}
           }
 
+          if (res && res.requires_2fa) {
+            // 2FA opsional: password sudah benar, server menunggu kode TOTP.
+            const code = (window.prompt('Masukkan kode 6 digit dari aplikasi Authenticator:', '') || '').trim();
+            if (!code) {
+              errBox.classList.remove('hidden');
+              errText.innerText = 'Kode autentikasi dua faktor wajib diisi.';
+              return;
+            }
+            google.script.run
+              .withSuccessHandler((vres) => {
+                if (vres && vres.success && vres.token) {
+                  saveAuth(vres.token, vres.user);
+                  showToast(`Selamat datang, ${vres.user.nama_lengkap}!`, 'success');
+                  routeUserRole(vres.user.role);
+                } else {
+                  errBox.classList.remove('hidden');
+                  errText.innerText = (vres && vres.message) || 'Kode 2FA tidak valid.';
+                }
+              })
+              .withFailureHandler((e2) => {
+                errBox.classList.remove('hidden');
+                errText.innerText = 'Gagal verifikasi 2FA: ' + e2.message;
+              })
+              .verify2fa(usernameInput, res.challenge, code);
+            return;
+          }
           if (res && res.success) {
             saveAuth(res.token, res.user);
             showToast(`Selamat datang, ${res.user.nama_lengkap}!`, 'success');
@@ -4206,7 +4556,7 @@
             try { lucide.createIcons(); } catch(e){}
           }
           errBox.classList.remove('hidden');
-          errText.innerText = 'Koneksi ke Apps Script gagal: ' + err.message;
+          errText.innerText = 'Tidak dapat terhubung ke server: ' + err.message;
         })
         .login(usernameInput, passwordInput, navigator.userAgent || '');
     }
@@ -4351,7 +4701,7 @@
           if (btn) { btn.disabled = false; btn.innerHTML = original; }
           showToast('Gagal memeriksa versi: ' + ((err && err.message) || 'kesalahan server'), 'error');
         })
-        .getApplicationVersion(AppState.user.username, AppState.token);
+        .getApplicationVersion(AppState.user.username, AppState.token, true);
     }
 
     async function handleAppUpdate() {
@@ -4943,6 +5293,16 @@
         .getAdminData(AppState.user.username, AppState.token);
     }
 
+    /** Tandai tab aktif pada rail menu baru (data + aksesibilitas, bukan class hardcode). */
+    function cbtSetActiveTab(prefix, names, active) {
+      names.forEach(function (name) {
+        const btn = document.getElementById(prefix + name);
+        if (!btn) return;
+        btn.setAttribute('aria-selected', name === active ? 'true' : 'false');
+        btn.tabIndex = name === active ? 0 : -1;
+      });
+    }
+
     function switchAdminTab(tab) {
       document.getElementById('admin-tab-users').classList.toggle('hidden', tab !== 'users');
       document.getElementById('admin-tab-login').classList.toggle('hidden', tab !== 'login');
@@ -4952,24 +5312,8 @@
       document.getElementById('admin-tab-logs').classList.toggle('hidden', tab !== 'logs');
       document.getElementById('admin-tab-settings').classList.toggle('hidden', tab !== 'settings');
       
-      const tabUsersBtn = document.getElementById('tab-btn-users');
-      const tabLoginBtn = document.getElementById('tab-btn-login');
-      const tabSesiBtn = document.getElementById('tab-btn-sesi');
-      const tabExamsBtn = document.getElementById('tab-btn-exams');
-      const tabResultsBtn = document.getElementById('tab-btn-results');
-      const tabLogsBtn = document.getElementById('tab-btn-logs');
-      const tabSettingsBtn = document.getElementById('tab-btn-settings');
-      
-      const activeClass = 'pb-3 border-b-2 border-indigo-600 text-indigo-600 transition flex items-center gap-1.5';
-      const inactiveClass = 'pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5';
-
-      if (tabUsersBtn) tabUsersBtn.className = tab === 'users' ? activeClass : inactiveClass;
-      if (tabLoginBtn) tabLoginBtn.className = tab === 'login' ? activeClass : inactiveClass;
-      if (tabSesiBtn) tabSesiBtn.className = tab === 'sesi' ? activeClass : inactiveClass;
-      if (tabExamsBtn) tabExamsBtn.className = tab === 'exams' ? activeClass : inactiveClass;
-      if (tabResultsBtn) tabResultsBtn.className = tab === 'results' ? activeClass : inactiveClass;
-      if (tabLogsBtn) tabLogsBtn.className = tab === 'logs' ? activeClass : inactiveClass;
-      if (tabSettingsBtn) tabSettingsBtn.className = tab === 'settings' ? activeClass : inactiveClass;
+      cbtSetActiveTab('tab-btn-',
+        ['users', 'login', 'sesi', 'exams', 'results', 'logs', 'settings'], tab);
 
       if (tab === 'login') {
         loadStudentLoginSessions('admin');
@@ -6079,12 +6423,7 @@
         document.getElementById('guru-tab-' + t).classList.toggle('hidden', tab !== t);
       });
 
-      const activeClass = 'pb-3 border-b-2 border-purple-600 text-purple-600 transition flex items-center gap-2 cursor-pointer';
-      const inactiveClass = 'pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 cursor-pointer';
-      tabs.forEach(t => {
-        const btn = document.getElementById('tab-guru-' + t);
-        if (btn) btn.className = tab === t ? activeClass : inactiveClass;
-      });
+      cbtSetActiveTab('tab-guru-', tabs, tab);
 
       if (tab === 'results') {
         const select = document.getElementById('select-exam-results');
@@ -10174,7 +10513,9 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
             updateAutoRefreshIndicator();
           }
         })
-        .getExamResults(AppState.user.username, AppState.token, examId);
+        // argumen ke-4 false = jangan kirim detail_jawaban LONGTEXT pada daftar;
+        // detail diambil terpisah saat tombol "Lihat Jawaban" ditekan.
+        .getExamResults(AppState.user.username, AppState.token, examId, false);
     }
 
     // Auto-Refresh & Loader Rekap Admin
@@ -10331,7 +10672,9 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
             updateAdminAutoRefreshIndicator();
           }
         })
-        .getExamResults(AppState.user.username, AppState.token, examId);
+        // argumen ke-4 false = jangan kirim detail_jawaban LONGTEXT pada daftar;
+        // detail diambil terpisah saat tombol "Lihat Jawaban" ditekan.
+        .getExamResults(AppState.user.username, AppState.token, examId, false);
     }
 
     function renderExamResultsTableGeneric(results, tbodyId) {
@@ -11003,7 +11346,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     // LIHAT JAWABAN & HAPUS HASIL UJIAN SISWA
     // ==========================================
     // Halaman ini hanya bisa dibuka dari tombol "Lihat Jawaban Siswa" pada rekap guru/admin.
-    function viewStudentAnswers(username_siswa) {
+    async function viewStudentAnswers(username_siswa) {
       if (!AppState.user || !AppState.token) {
         switchView('login');
         return;
@@ -11024,18 +11367,40 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         showToast('Data siswa tidak ditemukan.', 'error');
         return;
       }
-      AppState.currentViewingStudent = student;
+
+      // Detail jawaban (LONGTEXT) sengaja tidak ikut pada rekap daftar. Ambil
+      // satu baris saja saat halaman detail dibuka.
+      let detail = null;
+      try {
+        const response = await new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(err => reject(err))
+            .getExamResultDetail(AppState.user.username, AppState.token, student.id_hasil);
+        });
+        if (response && response.success && response.detail) detail = response.detail;
+      } catch (err) {
+        showToast('Gagal memuat detail jawaban: ' + ((err && err.message) || 'Kesalahan jaringan.'), 'error');
+        return;
+      }
+      if (!detail) {
+        showToast('Detail jawaban tidak tersedia.', 'error');
+        return;
+      }
+      AppState.currentViewingStudent = Object.assign({}, student, detail);
 
       let questions = res.questions || [];
       let answers = {};
       try {
-        answers = typeof student.detail_jawaban === 'string' ? JSON.parse(student.detail_jawaban || '{}') : (student.detail_jawaban || {});
+        answers = typeof detail.detail_jawaban === 'string'
+          ? JSON.parse(detail.detail_jawaban || '{}')
+          : (detail.detail_jawaban || {});
       } catch (e) {
         answers = {};
       }
 
       // Jika ujian memakai "Jumlah Soal Tampil", tampilkan hanya paket soal acak milik siswa ini
-      const selectedSoalIds = String(student.soal_terpilih || '').split(',').map(s => s.trim()).filter(Boolean);
+      const selectedSoalIds = String(detail.soal_terpilih || '').split(',').map(s => s.trim()).filter(Boolean);
       if (selectedSoalIds.length > 0) {
         const selectedSoalSet = new Set(selectedSoalIds);
         questions = questions.filter(q => selectedSoalSet.has(q.id_soal));
@@ -11395,21 +11760,13 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     function switchStudentTab(tab) {
       const panelExams = document.getElementById('student-tab-exams');
       const panelGrades = document.getElementById('student-tab-grades');
-      const tabExamsBtn = document.getElementById('tab-student-exams');
-      const tabGradesBtn = document.getElementById('tab-student-grades');
 
       if (panelExams) panelExams.classList.toggle('hidden', tab !== 'exams');
       if (panelGrades) panelGrades.classList.toggle('hidden', tab !== 'grades');
 
-      if (tab === 'exams') {
-        if (tabExamsBtn) tabExamsBtn.className = 'pb-3 border-b-2 border-emerald-600 text-emerald-600 transition flex items-center gap-2 cursor-pointer';
-        if (tabGradesBtn) tabGradesBtn.className = 'pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 cursor-pointer';
-      } else {
-        if (tabGradesBtn) tabGradesBtn.className = 'pb-3 border-b-2 border-emerald-600 text-emerald-600 transition flex items-center gap-2 cursor-pointer';
-        if (tabExamsBtn) tabExamsBtn.className = 'pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2 cursor-pointer';
-        if (AppState.studentData && AppState.studentData.completedExams) {
-          renderStudentGrades(AppState.studentData.completedExams);
-        }
+      cbtSetActiveTab('tab-student-', ['exams', 'grades'], tab);
+      if (tab !== 'exams' && AppState.studentData && AppState.studentData.completedExams) {
+        renderStudentGrades(AppState.studentData.completedExams);
       }
       if (window.lucide && typeof lucide.createIcons === 'function') {
         try { lucide.createIcons(); } catch(e){}
@@ -12462,7 +12819,9 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     // klik cepat berturut-turut digabung menjadi satu permintaan. Bila ada
     // perubahan saat permintaan sedang berjalan, permintaan berikutnya menyusul
     // begitu yang pertama selesai (tidak pernah dua permintaan paralel).
-    const AUTOSAVE_DEBOUNCE_MS = 1000;
+    // 2,5 detik: menekan write amplification saat 100+ siswa mengubah jawaban,
+    // masih terasa instan karena LAYER 1 menyimpan ke localStorage seketika.
+    const AUTOSAVE_DEBOUNCE_MS = 2500;
 
     /** Siapkan mesin autosave (dipanggil saat sesi ujian dimulai). */
     function setupAutosaveEngine() {
@@ -12946,6 +13305,423 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         })
         .submitExam(AppState.user.username, AppState.token, payload);
     }
+  </script>
+
+  <!-- ========================================== -->
+  <!-- 9. UX/UI LAYER (Bagian 4.7)                 -->
+  <!-- ========================================== -->
+  <script>
+  (function () {
+    'use strict';
+    const $ = (s, r = document) => r.querySelector(s);
+    const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+    const KEY = {
+      theme: 'cbt_ux_theme', brand: 'cbt_ux_brand', lang: 'cbt_ux_lang', onboard: 'cbt_ux_onboard_'
+    };
+    const BRANDS = ['teal', 'hijau', 'hirup', 'marun'];
+
+    /* --- 8. i18n ringan: chrome + layar kunci (ID/EN) ---------------------- */
+    const DICT = {
+      id: {
+        search: 'Cari cepat', searchHint: 'Cari siswa, ujian, atau soal yang sudah dimuat…',
+        theme: 'Ganti tema terang/gelap', brand: 'Ganti warna sekolah', lang: 'Ganti bahasa',
+        onboard: 'Mulai', close: 'Tutup', retry: 'Coba Lagi', reload: 'Muat Ulang',
+        errorTitle: 'Halaman tidak dapat dimuat', errorBody: 'Koneksi ke server terputus atau berkas tidak dapat dimuat. Periksa koneksi, lalu coba lagi.',
+        savedNow: 'Tersimpan baru saja', savedAgo: 'Tersimpan {n} dtk lalu',
+        online: 'Tersambung', offline: 'Tidak tersambung',
+        themeChanged: 'Tema', brandChanged: 'Warna sekolah', langChanged: 'Bahasa',
+        resultsEmpty: 'Tidak ada hasil. Muat data terlebih dahulu atau ubah kata kunci.',
+        siswa: 'Siswa', ujian: 'Ujian', soal: 'Soal'
+      },
+      en: {
+        search: 'Quick search', searchHint: 'Search loaded students, exams, or questions…',
+        theme: 'Switch light/dark theme', brand: 'Change school colour', lang: 'Change language',
+        onboard: 'Get started', close: 'Close', retry: 'Try Again', reload: 'Reload',
+        errorTitle: 'The page could not load', errorBody: 'The server connection dropped or a file failed to load. Check your connection, then try again.',
+        savedNow: 'Saved just now', savedAgo: 'Saved {n}s ago',
+        online: 'Connected', offline: 'Offline',
+        themeChanged: 'Theme', brandChanged: 'School colour', langChanged: 'Language',
+        resultsEmpty: 'No results. Load the data first or try a different keyword.',
+        siswa: 'Student', ujian: 'Exam', soal: 'Question'
+      }
+    };
+    let lang = localStorage.getItem(KEY.lang) === 'en' ? 'en' : 'id';
+    window.cbtT = function (key, vars) {
+      let out = (DICT[lang] && DICT[lang][key]) || (DICT.id[key]) || key;
+      if (vars) Object.keys(vars).forEach(k => { out = out.replace('{' + k + '}', vars[k]); });
+      return out;
+    };
+    function applyI18n() {
+      document.documentElement.lang = lang;
+      $$('[data-i18n]').forEach(el => {
+        const v = window.cbtT(el.getAttribute('data-i18n'));
+        if (v) el.textContent = v;
+      });
+    }
+
+    /* --- Tema & warna sekolah --------------------------------------------- */
+    function applyTheme() {
+      const t = localStorage.getItem(KEY.theme) === 'dark' ? 'dark' : 'light';
+      const b = localStorage.getItem(KEY.brand) || 'teal';
+      document.documentElement.dataset.theme = t;
+      document.documentElement.dataset.brand = BRANDS.indexOf(b) >= 0 ? b : 'teal';
+      const themeBtn = $('#cbt-dock-theme');
+      if (themeBtn) themeBtn.title = window.cbtT('theme');
+      const brandBtn = $('#cbt-dock-brand');
+      if (brandBtn) brandBtn.title = window.cbtT('brand');
+    }
+    function cycleTheme() {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem(KEY.theme, next);
+      applyTheme();
+      if (typeof showToast === 'function') showToast(window.cbtT('themeChanged') + ': ' + next, 'success');
+    }
+    function cycleBrand() {
+      const cur = document.documentElement.dataset.brand || 'teal';
+      const next = BRANDS[(BRANDS.indexOf(cur) + 1) % BRANDS.length];
+      localStorage.setItem(KEY.brand, next);
+      applyTheme();
+      if (typeof showToast === 'function') showToast(window.cbtT('brandChanged') + ': ' + next, 'success');
+    }
+    function toggleLang() {
+      lang = lang === 'id' ? 'en' : 'id';
+      localStorage.setItem(KEY.lang, lang);
+      applyI18n();
+      const btn = $('#cbt-dock-lang');
+      if (btn) btn.textContent = lang.toUpperCase();
+      if (typeof showToast === 'function') showToast(window.cbtT('langChanged') + ': ' + lang.toUpperCase(), 'success');
+    }
+
+    /* --- Dock utilitas ----------------------------------------------------- */
+    function buildDock() {
+      if ($('#cbt-ux-dock')) return;
+      const dock = document.createElement('div');
+      dock.id = 'cbt-ux-dock';
+      dock.className = 'cbt-dock';
+      dock.innerHTML =
+        '<button id="cbt-dock-search" title="' + window.cbtT('search') + ' (Ctrl+K)" aria-label="' + window.cbtT('search') + '"><i data-lucide="search" class="w-5 h-5"></i></button>' +
+        '<button id="cbt-dock-theme" title="' + window.cbtT('theme') + '" aria-label="' + window.cbtT('theme') + '"><i data-lucide="moon" class="w-5 h-5"></i></button>' +
+        '<button id="cbt-dock-brand" title="' + window.cbtT('brand') + '" aria-label="' + window.cbtT('brand') + '"><i data-lucide="palette" class="w-5 h-5"></i></button>' +
+        '<button id="cbt-dock-lang" class="cbt-dock-main" title="' + window.cbtT('lang') + '" aria-label="' + window.cbtT('lang') + '">' + lang.toUpperCase() + '</button>';
+      document.body.appendChild(dock);
+      $('#cbt-dock-search').addEventListener('click', openSearch);
+      $('#cbt-dock-theme').addEventListener('click', cycleTheme);
+      $('#cbt-dock-brand').addEventListener('click', cycleBrand);
+      $('#cbt-dock-lang').addEventListener('click', toggleLang);
+      refreshDock();
+    }
+    function refreshDock() {
+      const dock = $('#cbt-ux-dock');
+      if (!dock) return;
+      const inExam = AppState.activeView === 'exam' || (AppState.runtime && AppState.runtime.isExamActive);
+      dock.style.display = inExam ? 'none' : 'flex';
+      const role = ((AppState.user && AppState.user.role) || '').toLowerCase();
+      const s = $('#cbt-dock-search');
+      if (s) s.style.display = (role === 'admin' || role === 'guru') ? '' : 'none';
+    }
+
+    /* --- Pencarian global -------------------------------------------------- */
+    function buildSearch() {
+      if ($('#cbt-ux-search')) return;
+      const ov = document.createElement('div');
+      ov.id = 'cbt-ux-search';
+      ov.className = 'cbt-overlay';
+      ov.hidden = true;
+      ov.setAttribute('role', 'dialog');
+      ov.setAttribute('aria-modal', 'true');
+      ov.innerHTML =
+        '<div class="cbt-panel">' +
+          '<h2>' + window.cbtT('search') + '</h2>' +
+          '<p>' + window.cbtT('searchHint') + '</p>' +
+          '<input id="cbt-search-input" type="search" autocomplete="off" aria-label="' + window.cbtT('search') + '">' +
+          '<div id="cbt-search-results" style="margin-top:14px;max-height:52vh;overflow:auto"></div>' +
+          '<p style="margin-top:14px;font-size:.7rem;color:var(--cbt-muted)">Esc — ' + window.cbtT('close') + '</p>' +
+        '</div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', e => { if (e.target === ov) closeSearch(); });
+      $('#cbt-search-input').addEventListener('input', e => renderResults(e.target.value));
+    }
+    function searchIndex() {
+      const out = [];
+      const users = (AppState.adminData && AppState.adminData.users) || AppState.teacherData.availableStudents || [];
+      users.forEach(u => out.push({
+        type: window.cbtT('siswa') || 'Siswa', label: u.nama_lengkap || u.username || '', sub: u.username || '',
+        go: () => goToUser(u.username)
+      }));
+      const exams = AppState.teacherData.exams || (AppState.adminData && AppState.adminData.exams) || AppState.studentData.exams || [];
+      exams.forEach(e => out.push({
+        type: 'Ujian', label: e.nama_ujian || e.id_ujian || '', sub: e.id_ujian || '',
+        go: () => goToExam(e)
+      }));
+      (AppState.teacherData.questions || []).forEach(q => out.push({
+        type: 'Soal', label: String(q.teks_soal || '').replace(/<[^>]*>/g, '').slice(0, 90), sub: q.id_soal || '',
+        go: () => goToQuestion(q)
+      }));
+      return out;
+    }
+    function renderResults(term) {
+      const box = $('#cbt-search-results');
+      if (!box) return;
+      const q = String(term || '').trim().toLowerCase();
+      const items = searchIndex().filter(x => !q || (x.label + ' ' + x.sub).toLowerCase().indexOf(q) >= 0).slice(0, 12);
+      if (!items.length) { box.innerHTML = '<p style="font-size:.8rem;color:var(--cbt-muted)">' + window.cbtT('resultsEmpty') + '</p>'; return; }
+      box.innerHTML = '';
+      items.forEach(item => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'cbt-result';
+        b.innerHTML = '<span class="cbt-chip">' + escapeHtmlSafe(item.type) + '</span>' +
+          '<span style="min-width:0"><span class="block text-sm font-bold truncate">' + escapeHtmlSafe(item.label) + '</span>' +
+          '<span class="block text-[11px]" style="color:var(--cbt-muted)">' + escapeHtmlSafe(item.sub) + '</span></span>';
+        b.addEventListener('click', item.go);
+        box.appendChild(b);
+      });
+    }
+    function escapeHtmlSafe(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function goToUser(username) {
+      closeSearch();
+      const role = ((AppState.user && AppState.user.role) || '').toLowerCase();
+      switchView(role === 'admin' ? 'admin' : 'guru');
+      setTimeout(() => {
+        const input = $('#search-user') || $('#search-admin-login') || $('#search-guru-login');
+        if (input && username) { input.value = username; input.dispatchEvent(new Event('input', { bubbles: true })); }
+      }, 140);
+    }
+    function goToExam(exam) {
+      closeSearch();
+      const role = ((AppState.user && AppState.user.role) || '').toLowerCase();
+      switchView(role === 'admin' ? 'admin' : role === 'guru' ? 'guru' : 'siswa');
+      setTimeout(() => {
+        const input = $('#admin-exams-search');
+        if (input && exam.nama_ujian) { input.value = exam.nama_ujian; input.dispatchEvent(new Event('input', { bubbles: true })); }
+      }, 140);
+    }
+    function goToQuestion(question) {
+      closeSearch();
+      switchView('bank-soal');
+      if (typeof showToast === 'function') showToast('Soal ' + (question.id_soal || '') + ' dibuka di Bank Soal.', 'info');
+    }
+    function openSearch() {
+      buildSearch();
+      const ov = $('#cbt-ux-search');
+      ov.hidden = false;
+      const input = $('#cbt-search-input');
+      input.value = '';
+      renderResults('');
+      input.focus();
+    }
+    function closeSearch() { const ov = $('#cbt-ux-search'); if (ov) ov.hidden = true; }
+
+    /* --- Onboarding singkat per peran ------------------------------------- */
+    const ONBOARD = {
+      admin: [
+        ['Kelola sekolah dari satu layar', 'Pengguna, ujian, dan pengaturan ada di menu yang sama.'],
+        ['Siapkan ujian tanpa ribet', 'Atur jadwal, target peserta, token, dan kebijakan ujian.'],
+        ['Pantau hasil lebih cepat', 'Rekap nilai, jawaban, dan pelanggaran dapat dibuka langsung.']
+      ],
+      guru: [
+        ['Buat ujian untuk kelas Anda', 'Tentukan jadwal, durasi, dan siswa yang boleh mengikuti.'],
+        ['Isi bank soal', 'Tambahkan soal manual atau hasilkan draf dengan AI.'],
+        ['Pantau pengerjaan', 'Lihat siapa yang sudah mengumpulkan dan catat pelanggaran.']
+      ],
+      siswa: [
+        ['Buka ujian sesuai jadwal', 'Hanya ujian untuk kelas dan sesi Anda yang tampil.'],
+        ['Jawaban tersimpan otomatis', 'Tidak perlu menekan tombol simpan; indikator di atas menunjukkan statusnya.'],
+        ['Kumpulkan sebelum waktu habis', 'Pastikan semua soal terjawab, lalu pilih Kumpulkan Ujian.']
+      ]
+    };
+    function maybeOnboarding(role) {
+      const r = (role || '').toLowerCase();
+      if (!ONBOARD[r] || localStorage.getItem(KEY.onboard + r)) return;
+      localStorage.setItem(KEY.onboard + r, '1');
+      showOnboarding(r);
+    }
+    function showOnboarding(role) {
+      let ov = $('#cbt-ux-onboard');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'cbt-ux-onboard';
+        ov.className = 'cbt-overlay';
+        document.body.appendChild(ov);
+      }
+      const steps = ONBOARD[role] || ONBOARD.siswa;
+      ov.innerHTML =
+        '<div class="cbt-panel" role="dialog" aria-modal="true">' +
+          '<h2>Selamat datang di CBT GAS</h2>' +
+          '<p>Tiga hal yang perlu Anda tahu untuk mulai.</p>' +
+          steps.map((s, i) =>
+            '<div class="cbt-step"><div class="cbt-step-num">' + (i + 1) + '</div>' +
+            '<div><div class="text-sm font-bold">' + escapeHtmlSafe(s[0]) + '</div>' +
+            '<div style="font-size:.8rem;color:var(--cbt-muted);line-height:1.6">' + escapeHtmlSafe(s[1]) + '</div></div></div>'
+          ).join('') +
+          '<button id="cbt-onboard-ok" type="button" class="mt-5 w-full py-3 rounded-xl font-bold" style="background:var(--cbt-brand);color:var(--cbt-onbrand)">' + window.cbtT('onboard') + '</button>' +
+        '</div>';
+      ov.hidden = false;
+      $('#cbt-onboard-ok').addEventListener('click', () => { ov.hidden = true; });
+    }
+
+    /* --- Halaman error ramah ---------------------------------------------- */
+    function showCbtError(message, retry) {
+      let ov = $('#cbt-ux-error');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'cbt-ux-error';
+        ov.className = 'cbt-overlay';
+        ov.style.alignItems = 'center';
+        document.body.appendChild(ov);
+      }
+      ov.innerHTML =
+        '<div class="cbt-panel" role="alertdialog" aria-modal="true">' +
+          '<div class="cbt-error-mark"><i data-lucide="wifi-off" class="w-7 h-7"></i></div>' +
+          '<h2>' + window.cbtT('errorTitle') + '</h2>' +
+          '<p>' + window.cbtT('errorBody') + '</p>' +
+          (message ? '<p class="cbt-mono" style="font-size:.72rem;margin-top:10px">' + escapeHtmlSafe(message) + '</p>' : '') +
+          '<div class="flex gap-2.5 mt-6">' +
+            '<button id="cbt-error-retry" type="button" class="flex-1 py-3 rounded-xl font-bold" style="background:var(--cbt-brand);color:var(--cbt-onbrand)">' + window.cbtT('retry') + '</button>' +
+            '<button id="cbt-error-reload" type="button" class="flex-1 py-3 rounded-xl font-bold" style="border:1px solid var(--cbt-line)">' + window.cbtT('reload') + '</button>' +
+          '</div>' +
+        '</div>';
+      ov.hidden = false;
+      $('#cbt-error-retry').addEventListener('click', () => {
+        ov.hidden = true;
+        if (typeof retry === 'function') retry();
+      });
+      $('#cbt-error-reload').addEventListener('click', () => window.location.reload());
+      if (window.lucide && typeof lucide.createIcons === 'function') { try { lucide.createIcons(); } catch (e) {} }
+    }
+    window.showCbtError = showCbtError;
+    window.addEventListener('unhandledrejection', e => {
+      const msg = (e.reason && (e.reason.message || e.reason)) || '';
+      if (String(msg).indexOf('fetch') >= 0 || String(msg).indexOf('network') >= 0) showCbtError(String(msg));
+    });
+    window.addEventListener('error', e => {
+      if (e.target && e.target.tagName === 'SCRIPT') showCbtError('Gagal memuat ' + (e.target.src || 'aset'));
+    }, true);
+
+    /* --- Status koneksi & waktu autosave relatif --------------------------- */
+    function setConnection(online) {
+      const c = $('#cbt-connection');
+      if (!c) return;
+      c.classList.toggle('offline', !online);
+      const t = $('#cbt-connection-text');
+      if (t) t.textContent = window.cbtT(online ? 'online' : 'offline');
+    }
+    function startAutosaveClock() {
+      const el = $('#autosave-cloud-text');
+      if (!el || el.dataset.uxHooked) return;
+      el.dataset.uxHooked = '1';
+      let savedAt = null;
+      const observer = new MutationObserver(() => {
+        const text = el.textContent.trim();
+        if (/^Tersimpan\s+\d{2}:\d{2}:\d{2}$/.test(text)) savedAt = Date.now();
+      });
+      observer.observe(el, { childList: true, characterData: true, subtree: true });
+      setInterval(() => {
+        if (!savedAt) return;
+        const sec = Math.floor((Date.now() - savedAt) / 1000);
+        const next = sec < 5 ? window.cbtT('savedNow') : window.cbtT('savedAgo', { n: sec });
+        if (el.textContent.trim() !== next) el.textContent = next;
+      }, 1000);
+    }
+
+    /* --- Filter palet & sisa waktu di konfirmasi submit -------------------- */
+    let paletteFilter = 'all';
+    function applyPaletteFilter() {
+      const grid = $('#exam-palette-grid');
+      if (!grid) return;
+      $$('button', grid).forEach((btn, idx) => {
+        const q = AppState.runtime.questions[idx];
+        if (!q) return;
+        const answered = Boolean(AppState.runtime.answers[q.id_soal]);
+        const doubt = Boolean(AppState.runtime.doubts[q.id_soal]);
+        let show = true;
+        if (paletteFilter === 'empty') show = !answered;
+        else if (paletteFilter === 'doubt') show = doubt;
+        btn.style.display = show ? '' : 'none';
+      });
+    }
+    function updateSubmitTimeLeft() {
+      const el = $('#confirm-time-left');
+      if (!el) return;
+      const rt = AppState.runtime;
+      let text = '';
+      if (rt && rt.remainingSeconds > 0) {
+        const s = rt.remainingSeconds;
+        text = 'Sisa waktu ' + [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60]
+          .map(n => String(n).padStart(2, '0')).join(':');
+      } else {
+        const timer = $('#exam-timer');
+        if (timer && timer.textContent.trim() !== '00:00:00') text = 'Sisa waktu ' + timer.textContent.trim();
+      }
+      el.textContent = text;
+    }
+
+    /* --- Pasang wrapper ke fungsi yang sudah ada --------------------------- */
+    function wrapGlobal(name, after) {
+      const original = window[name];
+      if (typeof original !== 'function') return;
+      window[name] = function () {
+        const result = original.apply(this, arguments);
+        try { after.apply(this, arguments); } catch (e) { console.warn('[CBT UX]', name, e); }
+        return result;
+      };
+    }
+
+    function init() {
+      applyTheme();
+      applyI18n();
+      buildDock();
+      startAutosaveClock();
+      setConnection(navigator.onLine !== false);
+      window.addEventListener('online', () => setConnection(true));
+      window.addEventListener('offline', () => setConnection(false));
+
+      document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          const role = ((AppState.user && AppState.user.role) || '').toLowerCase();
+          if (role === 'admin' || role === 'guru') openSearch();
+        }
+        if (e.key === 'Escape') { closeSearch(); const o = $('#cbt-ux-onboard'); if (o) o.hidden = true; }
+      });
+
+      // Panah kiri/kanan berpindah antar item rail menu (pola tablist).
+      document.addEventListener('keydown', e => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const rail = e.target && e.target.closest ? e.target.closest('.cbt-navrail') : null;
+        if (!rail) return;
+        const items = $$('.cbt-navitem', rail);
+        const idx = items.indexOf(e.target);
+        if (idx < 0) return;
+        e.preventDefault();
+        const next = items[(idx + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length];
+        if (next) { next.focus(); next.click(); }
+      });
+
+      const filterBar = $('#cbt-palette-filter');
+      if (filterBar) filterBar.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-filter]');
+        if (!btn) return;
+        paletteFilter = btn.dataset.filter;
+        $$('button', filterBar).forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+        applyPaletteFilter();
+      });
+
+      wrapGlobal('renderPalette', applyPaletteFilter);
+      wrapGlobal('promptSubmitExam', updateSubmitTimeLeft);
+      wrapGlobal('switchView', refreshDock);
+      wrapGlobal('routeUserRole', function (role) {
+        refreshDock();
+        setTimeout(() => maybeOnboarding(role), 700);
+      });
+      refreshDock();
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
   </script>
 </body>
 </html>

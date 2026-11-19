@@ -48,10 +48,18 @@ function saveSession($username, $token, $sessionData): array
         $namaVal = limit_text(sanitize_plain_text($namaVal), 150);
         $idSesi = trim(tostr($sessionData['id_sesi'] ?? ''));
 
+        // Jalur cepat memakai unique key nama_sesi. Fallback LOWER(TRIM())
+        // hanya untuk baris lama yang belum dinormalisasi (tabel kecil).
         $duplicate = db_one(
-            'SELECT id_sesi FROM sesi WHERE LOWER(TRIM(nama_sesi)) = ? AND id_sesi <> ? LIMIT 1',
-            [strtolower($namaVal), $idSesi]
+            'SELECT id_sesi FROM sesi WHERE nama_sesi = ? AND id_sesi <> ? LIMIT 1',
+            [$namaVal, $idSesi]
         );
+        if (!$duplicate) {
+            $duplicate = db_one(
+                'SELECT id_sesi FROM sesi WHERE LOWER(TRIM(nama_sesi)) = ? AND id_sesi <> ? LIMIT 1',
+                [strtolower($namaVal), $idSesi]
+            );
+        }
         if ($duplicate) {
             return err('Nama sesi sudah digunakan.');
         }

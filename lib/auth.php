@@ -94,6 +94,41 @@ function upgrade_legacy_password(array $row, string $plain): void
     }
 }
 
+/**
+ * Ambil satu baris user dengan cache per request.
+ *
+ * validate_session(), current_role() dan rbac_authorize() sebelumnya masing-
+ * masing memanggil find_user() sehingga satu action bisa 2-3x SELECT users
+ * yang sama. Cache ini hanya hidup selama satu request dan dibatalkan otomatis
+ * saat data user diubah (lihat current_user_invalidate()).
+ */
+function current_user(string $username, bool $fresh = false): ?array
+{
+    $key = strtolower(trim($username));
+    if ($key === '') {
+        return null;
+    }
+    if (!isset($GLOBALS['CBT_USER_CACHE']) || !is_array($GLOBALS['CBT_USER_CACHE'])) {
+        $GLOBALS['CBT_USER_CACHE'] = [];
+    }
+    if (!$fresh && array_key_exists($key, $GLOBALS['CBT_USER_CACHE'])) {
+        return $GLOBALS['CBT_USER_CACHE'][$key];
+    }
+    $row = find_user($key);
+    $GLOBALS['CBT_USER_CACHE'][$key] = $row;
+    return $row;
+}
+
+/** Batalkan cache user (sebuah username atau seluruhnya). */
+function current_user_invalidate(?string $username = null): void
+{
+    if ($username === null) {
+        $GLOBALS['CBT_USER_CACHE'] = [];
+        return;
+    }
+    unset($GLOBALS['CBT_USER_CACHE'][strtolower(trim($username))]);
+}
+
 /** Ambil satu baris user berdasarkan username (case-insensitive). */
 function find_user(string $username): ?array
 {
@@ -121,13 +156,15 @@ function find_user(string $username): ?array
 function validate_session($username, $token): bool
 {
     $username = strtolower(trim(tostr($username)));
-    $token = tostr($token);
+    // Cookie HttpOnly lebih dipercaya bila tersedia; klien lama tetap bisa
+    // mengirim token di body (kompatibilitas shim/Apps Script).
+    $token = auth_request_token(tostr($token));
     if ($username === '' || $token === '') {
         return false;
     }
 
     try {
-        $user = find_user($username);
+        $user = current_user($username);
         if (!$user) {
             return false;
         }
@@ -377,7 +414,7 @@ function session_cleanup(): void
 /** Role user yang sedang aktif (huruf kecil) atau '' bila tidak ditemukan. */
 function current_role(string $username): string
 {
-    $user = find_user($username);
+    $user = current_user($username);
     return $user ? strtolower(trim((string) $user['role'])) : '';
 }
 
@@ -445,33 +482,73 @@ function login($username, $password, $userAgent = ''): array
             }
         }
 
-        $maxSessions = $isStudent ? get_max_student_sessions() : 3;
-        $oldSessionCount = session_count_active((string) $user['username']);
-        $sessionToken = new_session_token();
-
-        // Sisakan ruang untuk sesi baru, lalu buat sesi.
-        session_trim_to((string) $user['username'], max(0, $maxSessions - 1));
-        session_create(strtolower((string) $user['username']), $sessionToken, auth_client_ip(), auth_user_agent());
-        // Token mentah gaya lama tidak disimpan lagi.
-        if (tostr($user['token_session'] ?? '') !== '') {
-            db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [tostr($user['id_user'])]);
+        // 2FA opsional untuk Admin/Guru: password benar belum menghasilkan sesi.
+        // Klien harus mengirim kode TOTP lewat verify2fa(challenge, code).
+        $secret2fa = trim(tostr($user['two_factor_secret'] ?? ''));
+        if ($secret2fa !== '' && !$isStudent) {
+            $challenge = strtoupper(bin2hex(random_bytes(16)));
+            cbt_cache_set('cbt.2fa.' . $challenge, [
+                'username' => strtolower((string) $user['username']),
+                'created'  => time(),
+            ], 300);
+            log_activity(tostr($user['username']), 'Login 2FA', 'Password benar, menunggu kode TOTP.');
+            return [
+                'success'      => true,
+                'requires_2fa' => true,
+                'challenge'    => $challenge,
+                'message'      => 'Masukkan kode autentikasi dua faktor.',
+            ];
         }
 
-        $kickedCount = max(0, $oldSessionCount - max(0, $maxSessions - 1));
+        [$sessionToken, $kickedCount] = auth_issue_session($user, tostr($userAgent));
 
-        login_note_attempt($username, true);
-        if (random_int(1, 20) === 1) {
-            session_cleanup();
-        }
+        return auth_login_response($user, $sessionToken, $kickedCount, tostr($userAgent));
+    } catch (Throwable $e) {
+        error_log('Login error: ' . $e->getMessage());
+        return err('Kesalahan server saat login. Coba lagi beberapa saat lagi.');
+    }
+}
 
-        $detected = detect_user_agent_browser(auth_user_agent() !== '' ? auth_user_agent() : tostr($userAgent));
-        log_activity(
-            tostr($user['username']),
-            'Login',
-            'Login berhasil dari browser/perangkat' . ($detected !== '' ? ' (' . strtoupper($detected) . ')' : '') . '.'
-            . ($kickedCount > 0 ? ' ' . $kickedCount . ' sesi login lama dikeluarkan (batas maksimal ' . $maxSessions . ' sesi).' : '')
-        );
+/**
+ * Buat sesi baru untuk user yang sudah terverifikasi (dipakai login & verify2fa).
+ *
+ * @return array{0:string,1:int} [token, jumlah sesi lama yang dikeluarkan]
+ */
+function auth_issue_session(array $user, string $userAgent = ''): array
+{
+    $isStudent = strtolower(trim(tostr($user['role']))) === 'siswa';
+    $maxSessions = $isStudent ? get_max_student_sessions() : 3;
+    $oldSessionCount = session_count_active((string) $user['username']);
+    $sessionToken = new_session_token();
 
+    session_trim_to((string) $user['username'], max(0, $maxSessions - 1));
+    session_create(strtolower((string) $user['username']), $sessionToken, auth_client_ip(), auth_user_agent());
+    if (tostr($user['token_session'] ?? '') !== '') {
+        db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [tostr($user['id_user'])]);
+    }
+
+    login_note_attempt(strtolower(trim(tostr($user['username']))), true);
+    if (random_int(1, 20) === 1) {
+        session_cleanup();
+    }
+
+    // Cookie HttpOnly + CSRF double-submit (Bagian 3.3).
+    auth_set_session_cookie($sessionToken, session_ttl_minutes());
+    auth_set_csrf_cookie(bin2hex(random_bytes(16)));
+
+    $detected = detect_user_agent_browser(auth_user_agent() !== '' ? auth_user_agent() : $userAgent);
+    log_activity(
+        tostr($user['username']),
+        'Login',
+        'Login berhasil dari browser/perangkat' . ($detected !== '' ? ' (' . strtoupper($detected) . ')' : '') . '.'
+    );
+
+    return [$sessionToken, max(0, $oldSessionCount - max(0, $maxSessions - 1))];
+}
+
+/** Bentuk respons login standar (dipakai login & verify2fa). */
+function auth_login_response(array $user, string $sessionToken, int $kickedCount, string $userAgent = ''): array
+{
         return [
             'success' => true,
             'token'   => $sessionToken,
@@ -484,11 +561,171 @@ function login($username, $password, $userAgent = ''): array
                 'status_aktif' => tostr($user['status_aktif']) !== '' ? tostr($user['status_aktif']) : 'Aktif',
                 'sesi'         => tostr($user['sesi'] ?? '') !== '' ? tostr($user['sesi']) : '-',
             ],
+            'must_change_password' => (int) ($user['must_change_password'] ?? 0) === 1,
+        ];
+}
+
+// ---------------------------------------------------------------------------
+// 2FA, perangkat aktif, dan kebijakan password (Bagian 3.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validasi kebijakan password. Mengembalikan null bila valid.
+ * Panjang minimum bisa diatur lewat CBT_PASSWORD_MIN_LENGTH (default 8).
+ */
+function password_policy_error(string $plain, string $username = ''): ?string
+{
+    $min = (int) (getenv('CBT_PASSWORD_MIN_LENGTH') ?: 8);
+    $min = max(8, min(64, $min));
+    if (mb_strlen($plain) < $min) {
+        return 'Password minimal ' . $min . ' karakter.';
+    }
+    if ($username !== '' && strcasecmp($plain, $username) === 0) {
+        return 'Password tidak boleh sama dengan username.';
+    }
+    $common = ['123456', '12345678', '123456789', 'password', 'password123', 'qwerty',
+               'admin', 'admin123', '111111', 'abc123', 'letmein'];
+    if (in_array(strtolower($plain), $common, true)) {
+        return 'Password terlalu umum. Pilih password yang lebih kuat.';
+    }
+    return null;
+}
+
+/** Truthy bila user berperan Admin atau Guru. */
+function auth_is_staff(string $username): bool
+{
+    return in_array(current_role($username), ['admin', 'guru'], true);
+}
+
+/** Mulai pendaftaran 2FA: buat rahasia TOTP (belum aktif sampai dikonfirmasi). */
+function setup_two_factor($username, $token): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa.');
+    }
+    if (!auth_is_staff(tostr($username))) {
+        return err('2FA hanya tersedia untuk Admin atau Guru.');
+    }
+    try {
+        $secret = totp_new_secret();
+        $user = current_user(tostr($username), true);
+        if (!$user) {
+            return err('Akun tidak ditemukan.');
+        }
+        db_exec('UPDATE users SET two_factor_secret = ? WHERE id_user = ?', [$secret, tostr($user['id_user'])]);
+        current_user_invalidate(tostr($username));
+        log_activity(tostr($username), 'Setup 2FA', 'Rahasia TOTP dibuat, menunggu konfirmasi kode.');
+        return [
+            'success'      => true,
+            'secret'       => $secret,
+            'provisioning' => totp_provisioning_uri($secret, tostr($user['username'])),
+            'message'      => 'Pindai QR/URI di aplikasi Authenticator, lalu konfirmasi dengan kode 6 digit.',
         ];
     } catch (Throwable $e) {
-        error_log('Login error: ' . $e->getMessage());
-        return err('Kesalahan server saat login. Coba lagi beberapa saat lagi.');
+        return err('Gagal menyiapkan 2FA: ' . client_error_message($e->getMessage()));
     }
+}
+
+/** Konfirmasi pendaftaran 2FA dengan kode dari aplikasi Authenticator. */
+function confirm_two_factor($username, $token, $code): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa.');
+    }
+    $user = current_user(tostr($username), true);
+    $secret = trim(tostr($user['two_factor_secret'] ?? ''));
+    if ($secret === '' || !totp_verify($secret, tostr($code))) {
+        return err('Kode TOTP tidak valid.');
+    }
+    log_activity(tostr($username), 'Aktifkan 2FA', 'Autentikasi dua faktor diaktifkan.');
+    return ['success' => true, 'enabled' => true, 'message' => '2FA berhasil diaktifkan.'];
+}
+
+/** Selesaikan login 2FA setelah password benar (challenge dari login()). */
+function verify_two_factor($username, $challenge, $code): array
+{
+    $username = strtolower(trim(tostr($username)));
+    $challenge = strtoupper(trim(tostr($challenge)));
+    $pending = $challenge !== '' ? cbt_cache_get('cbt.2fa.' . $challenge) : null;
+    if (!is_array($pending) || strcasecmp((string) ($pending['username'] ?? ''), $username) !== 0
+        || (time() - (int) ($pending['created'] ?? 0)) > 300) {
+        return err('Tantangan 2FA tidak valid atau kedaluwarsa. Silakan login lagi.');
+    }
+
+    $user = current_user($username, true);
+    $secret = trim(tostr($user['two_factor_secret'] ?? ''));
+    if ($secret === '' || !totp_verify($secret, tostr($code))) {
+        login_note_attempt($username, false);
+        log_activity($username, 'Login 2FA Gagal', 'Kode TOTP salah.');
+        return err('Kode autentikasi dua faktor salah.');
+    }
+
+    cbt_cache_delete('cbt.2fa.' . $challenge);
+    [$sessionToken, $kickedCount] = auth_issue_session($user ?: [], '');
+    return auth_login_response($user ?: [], $sessionToken, $kickedCount);
+}
+
+/** Nonaktifkan 2FA (membutuhkan sesi + kode TOTP). */
+function disable_two_factor($username, $token, $code): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa.');
+    }
+    $user = current_user(tostr($username), true);
+    $secret = trim(tostr($user['two_factor_secret'] ?? ''));
+    if ($secret === '' || !totp_verify($secret, tostr($code))) {
+        return err('Kode TOTP tidak valid.');
+    }
+    db_exec('UPDATE users SET two_factor_secret = NULL WHERE id_user = ?', [tostr($user['id_user'])]);
+    current_user_invalidate(tostr($username));
+    log_activity(tostr($username), 'Nonaktifkan 2FA', 'Autentikasi dua faktor dinonaktifkan.');
+    return ['success' => true, 'enabled' => false];
+}
+
+/** Keluarkan semua perangkat/token milik pengguna ini. */
+function logout_all_devices($username, $token): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa.');
+    }
+    $name = strtolower(trim(tostr($username)));
+    session_revoke_all($name);
+    $user = current_user($name, true);
+    if ($user) {
+        db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [tostr($user['id_user'])]);
+    }
+    auth_clear_session_cookie();
+    auth_clear_csrf_cookie();
+    log_activity($name, 'Logout Semua Perangkat', 'Seluruh sesi aktif dicabut.');
+    return ['success' => true, 'message' => 'Semua perangkat telah dikeluarkan.'];
+}
+
+/** Daftar perangkat/sesi aktif pengguna saat ini (tanpa token mentah). */
+function get_active_sessions($username, $token): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa.');
+    }
+    $currentHash = session_token_hash(auth_request_token(tostr($token)));
+    $rows = db_all(
+        'SELECT id_session, created_at, last_seen_at, expires_at, ip, user_agent, token_hash
+         FROM sessions WHERE username = ? AND revoked_at IS NULL AND expires_at > ?
+         ORDER BY last_seen_at DESC',
+        [strtolower(trim(tostr($username))), now_dt()]
+    );
+    $sessions = [];
+    foreach ($rows as $row) {
+        $sessions[] = [
+            'id_session'   => tostr($row['id_session']),
+            'created_at'   => tostr($row['created_at']),
+            'last_seen_at' => tostr($row['last_seen_at']),
+            'expires_at'   => tostr($row['expires_at']),
+            'ip'           => tostr($row['ip']),
+            'user_agent'   => tostr($row['user_agent']),
+            'is_current'   => hash_equals(tostr($row['token_hash']), $currentHash),
+        ];
+    }
+    return ['success' => true, 'sessions' => $sessions, 'total' => count($sessions)];
 }
 
 /**
@@ -497,7 +734,7 @@ function login($username, $password, $userAgent = ''): array
 function logout($username, $token): array
 {
     try {
-        session_revoke_token(tostr($token));
+        session_revoke_token(auth_request_token(tostr($token)));
 
         // Bersihkan juga token lama pada kolom kompatibilitas.
         $user = find_user(tostr($username));
@@ -507,6 +744,8 @@ function logout($username, $token): array
             db_exec('UPDATE users SET token_session = ? WHERE id_user = ?', [implode(',', $remaining), $user['id_user']]);
         }
         log_activity(tostr($username) !== '' ? tostr($username) : 'User', 'Logout', 'Pengguna telah keluar dari sistem.');
+        auth_clear_session_cookie();
+        auth_clear_csrf_cookie();
         return ['success' => true];
     } catch (Throwable $e) {
         error_log('Logout error: ' . $e->getMessage());

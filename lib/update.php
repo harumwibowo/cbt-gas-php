@@ -185,9 +185,9 @@ function update_setting_put(array $pairs): void
         if ($kunci === '') {
             continue;
         }
-        $exists = (int) db_val('SELECT COUNT(*) FROM settings WHERE LOWER(kunci) = ?', [$kunci], 0);
+        $exists = (int) db_val('SELECT COUNT(*) FROM settings WHERE kunci = ?', [$kunci], 0);
         if ($exists > 0) {
-            db_exec('UPDATE settings SET nilai = ? WHERE LOWER(kunci) = ?', [tostr($value), $kunci]);
+            db_exec('UPDATE settings SET nilai = ? WHERE kunci = ?', [tostr($value), $kunci]);
         } else {
             db_exec('INSERT INTO settings (kunci, nilai, keterangan) VALUES (?,?,?)',
                 [$kunci, tostr($value), 'Pembaruan aplikasi']);
@@ -376,6 +376,10 @@ function update_apply(string $username, string $token, bool $force = false): arr
     }
 
     update_cleanup_legacy_token();
+
+    // Backup database otomatis sebelum menimpa berkas (Bagian 3.7).
+    $dbBackup = db_backup('update');
+    error_log('[CBT update] backup DB ' . ($dbBackup !== null ? 'berhasil: ' . $dbBackup : 'gagal/ dilewati'));
 
     $root = APP_ROOT;
     $tmp = '';
@@ -606,7 +610,7 @@ function update_rollback(string $backupDir, array $written, array $added): void
 // --------------------------------------------------------------------- RPC --
 
 /** Info versi terpasang + versi terbaru di GitHub (tanpa mengubah apa pun). */
-function getApplicationVersion($username, $token): array
+function getApplicationVersion($username, $token, $force = false): array
 {
     if (!validate_session($username, $token)) {
         return err('Sesi kedaluwarsa. Silakan login kembali.');
@@ -617,15 +621,33 @@ function getApplicationVersion($username, $token): array
 
     $installed = update_installed_version();
     $repoConfigured = trim((string) UPDATE_REPO_SLUG) !== '';
-    $remote = update_remote_commit();
-    $apiStatus = update_api_status();
-    $remoteSha = is_string($remote['sha'] ?? null) ? (string) $remote['sha'] : '';
 
-    // Nama versi rilis terbaru di GitHub (berkas VERSION). Kosong bila gagal.
-    $latestName = $remoteSha !== '' ? update_remote_version_name($remoteSha) : '';
-    if ($latestName === '' && $remoteSha !== '') {
-        $latestName = update_remote_version_name();
+    // GitHub API anonim hanya 60 request/jam per IP. Cache hasil 15 menit
+    // (termasuk status 403/429) agar halaman Pengaturan tidak menembus kuota.
+    // Tombol "Periksa pembaruan" mengirim $force = true untuk refresh manual.
+    $cacheKey = 'cbt.update.check';
+    $check = $force ? null : cbt_cache_get($cacheKey);
+    if (!is_array($check)) {
+        $remote = update_remote_commit();
+        $check = [
+            'remote'     => $remote,
+            'api_status' => update_api_status(),
+        ];
+        $remoteSha = is_string($remote['sha'] ?? null) ? (string) $remote['sha'] : '';
+
+        // Nama versi rilis terbaru di GitHub (berkas VERSION). Kosong bila gagal.
+        $latestName = $remoteSha !== '' ? update_remote_version_name($remoteSha) : '';
+        if ($latestName === '' && $remoteSha !== '') {
+            $latestName = update_remote_version_name();
+        }
+        $check['latest_name'] = $latestName;
+        cbt_cache_set($cacheKey, $check, 900);
     }
+
+    $remote = $check['remote'] ?? null;
+    $apiStatus = $check['api_status'] ?? [];
+    $remoteSha = is_string($remote['sha'] ?? null) ? (string) $remote['sha'] : '';
+    $latestName = (string) ($check['latest_name'] ?? '');
 
     $nameChanged = $latestName !== '' && $installed['name'] !== '' && $latestName !== $installed['name'];
 

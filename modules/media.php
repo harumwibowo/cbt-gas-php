@@ -58,6 +58,72 @@ function media_store_blob(string $username, string $namaFile, string $mime, stri
 }
 
 /**
+ * Kompresi gambar saat unggah (bila ekstensi GD tersedia).
+ *
+ * Membatasi sisi terpanjang 1600 px dan menyimpan ulang sebagai WebP/JPEG
+ * kualitas 80. Hasil kompresi dipakai hanya bila ukurannya benar-benar lebih
+ * kecil, sehingga berkas kecil tidak membengkak. GIF/animasi dan berkas tanpa
+ * dukungan GD dibiarkan apa adanya.
+ *
+ * @return array{0:string,1:string} [byte gambar, mime akhir]
+ */
+function media_compress_bytes(string $bytes, string $mime): array
+{
+    if (!function_exists('imagecreatefromstring') || !function_exists('imagesx')) {
+        return [$bytes, $mime];
+    }
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+        return [$bytes, $mime];
+    }
+
+    $img = @imagecreatefromstring($bytes);
+    if ($img === false) {
+        return [$bytes, $mime];
+    }
+
+    $width = imagesx($img);
+    $height = imagesy($img);
+    $maxSide = 1600;
+    if ($width <= 0 || $height <= 0) {
+        imagedestroy($img);
+        return [$bytes, $mime];
+    }
+    if ($width > $maxSide || $height > $maxSide) {
+        $ratio = min($maxSide / $width, $maxSide / $height);
+        $newW = max(1, (int) round($width * $ratio));
+        $newH = max(1, (int) round($height * $ratio));
+        $resized = imagecreatetruecolor($newW, $newH);
+        if ($mime !== 'image/jpeg') {
+            imagealphablending($resized, false);
+            imagesavealpha($resized, true);
+            imagefilledrectangle($resized, 0, 0, $newW, $newH, imagecolorallocatealpha($resized, 0, 0, 0, 127));
+        }
+        imagecopyresampled($resized, $img, 0, 0, 0, 0, $newW, $newH, $width, $height);
+        imagedestroy($img);
+        $img = $resized;
+    }
+
+    ob_start();
+    if (function_exists('imagewebp')) {
+        $ok = imagewebp($img, null, 80);
+        $newMime = 'image/webp';
+    } elseif ($mime === 'image/jpeg' && function_exists('imagejpeg')) {
+        $ok = imagejpeg($img, null, 80);
+        $newMime = 'image/jpeg';
+    } else {
+        $ok = false;
+        $newMime = $mime;
+    }
+    $out = (string) ob_get_clean();
+    imagedestroy($img);
+
+    if (!$ok || $out === '' || strlen($out) >= strlen($bytes)) {
+        return [$bytes, $mime];
+    }
+    return [$out, $newMime];
+}
+
+/**
  * Validasi & simpan satu berkas hasil unggahan ($_FILES[...]).
  *
  * @return array{success:bool, id?:string, url?:string, mime?:string, ukuran?:int, nama_file?:string, message?:string}
@@ -139,6 +205,9 @@ function media_store_upload(string $username, array $file, ?int $maxBytes = null
     if ($bytes === '') {
         return err('Gagal membaca isi berkas gambar.');
     }
+
+    // Kecilkan ukuran BLOB di database & bandwidth penyajian gambar.
+    [$bytes, $mime] = media_compress_bytes($bytes, $mime);
 
     $namaFile = (string) ($file['name'] ?? '');
     $stored = media_store_blob($username, $namaFile, $mime, $bytes);

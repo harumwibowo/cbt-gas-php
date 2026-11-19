@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `created_at`   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id_user`),
   UNIQUE KEY `uq_users_username` (`username`),
-  KEY `idx_users_role` (`role`)
+  KEY `idx_users_role` (`role`),
+  KEY `idx_users_role_status` (`role`, `status_aktif`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `sesi` (
@@ -53,7 +54,8 @@ CREATE TABLE IF NOT EXISTS `exams` (
   `tindakan_pelanggaran` VARCHAR(30)  NOT NULL DEFAULT 'auto_submit',
   `created_at`           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id_ujian`),
-  KEY `idx_exams_guru` (`id_guru`)
+  KEY `idx_exams_guru` (`id_guru`),
+  KEY `idx_exams_guru_created` (`id_guru`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `questions` (
@@ -108,7 +110,9 @@ CREATE TABLE IF NOT EXISTS `results` (
   KEY `idx_results_ujian` (`id_ujian`),
   KEY `idx_results_siswa` (`username_siswa`),
   KEY `idx_results_ujian_siswa` (`id_ujian`, `username_siswa`),
-  KEY `idx_results_exam_status` (`id_ujian`, `status`)
+  KEY `idx_results_exam_status` (`id_ujian`, `status`),
+  KEY `idx_results_student` (`username_siswa`, `id_ujian`),
+  KEY `idx_results_deadline` (`deadline_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `logs` (
@@ -117,9 +121,13 @@ CREATE TABLE IF NOT EXISTS `logs` (
   `username`       VARCHAR(100) NOT NULL DEFAULT 'Anonymous',
   `jenis_kejadian` VARCHAR(80)  NOT NULL DEFAULT '',
   `keterangan`     TEXT         NULL,
+  `exam_id`        VARCHAR(40)  NULL,
+  `ip`             VARCHAR(45)  NOT NULL DEFAULT '',
+  `user_agent`     VARCHAR(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   KEY `idx_logs_user` (`username`),
-  KEY `idx_logs_jenis` (`jenis_kejadian`)
+  KEY `idx_logs_jenis` (`jenis_kejadian`),
+  KEY `idx_logs_exam_time` (`exam_id`, `timestamp`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `settings` (

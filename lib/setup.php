@@ -178,10 +178,12 @@ function setup_run(array $input, bool $createDb = true): array
         );
         $GLOBALS['CBT_PDO'] = $pdo;
 
-        ensure_schema();
+        // Instalasi penuh (DDL + seed) HANYA di sini dan di tools/migrate.php.
+        // Runtime request memakai ensure_schema() yang hanya baca versi skema.
+        schema_bootstrap();
 
         $tableCount = count($pdo->query('SHOW TABLES')->fetchAll());
-        $adminCount = (int) db_val("SELECT COUNT(*) FROM users WHERE LOWER(TRIM(role)) = 'admin'", [], 0);
+        $adminCount = (int) db_val("SELECT COUNT(*) FROM users WHERE role = 'admin'", [], 0);
         $userCount = (int) db_val('SELECT COUNT(*) FROM users', [], 0);
         $settingsCount = (int) db_val('SELECT COUNT(*) FROM settings', [], 0);
 
@@ -236,7 +238,7 @@ function setup_needs_wizard(): bool
             $cache = true;
             return true;
         }
-        $adminCount = (int) db_val("SELECT COUNT(*) FROM users WHERE LOWER(TRIM(role)) = 'admin'", [], 0);
+        $adminCount = (int) db_val("SELECT COUNT(*) FROM users WHERE role = 'admin'", [], 0);
         $cache = $adminCount === 0;
         return $cache;
     } catch (Throwable $e) {

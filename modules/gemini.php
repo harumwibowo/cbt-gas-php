@@ -206,6 +206,8 @@ function generateQuestionsWithGemini($username, $token, $params = []): array
                 db_exec('INSERT INTO settings (kunci, nilai, keterangan) VALUES (?,?,?)', ['gemini_model', $modelParam, $desc]);
             }
             log_activity(tostr($username), 'Update Settings', 'Model Gemini generate soal diubah ke "' . $modelParam . '".');
+            // Tulisan langsung ke tabel settings harus membatalkan cache lintas request.
+            settings_map(true);
         }
         if ($modelParam !== '') {
             $modelId = $modelParam;
