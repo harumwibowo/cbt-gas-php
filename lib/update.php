@@ -315,6 +315,24 @@ function update_should_copy(string $relativePath): bool
 }
 
 /**
+ * Cek apakah berkas baru bisa ditulis, termasuk berkas di folder yang belum ada.
+ * is_writable() mengembalikan false untuk path yang tidak ada, jadi naik ke
+ * direktori induk terdekat yang sudah ada (folder akan dibuat saat salin).
+ */
+function update_parent_writable(string $target): bool
+{
+    $dir = dirname($target);
+    while (!is_dir($dir)) {
+        $parent = dirname($dir);
+        if ($parent === $dir) {
+            break;
+        }
+        $dir = $parent;
+    }
+    return is_dir($dir) && is_writable($dir);
+}
+
+/**
  * Bersihkan sisa token lama.
  *
  * Fitur token dihapus karena repositori kini publik; berkas token lama di
@@ -465,8 +483,7 @@ function update_apply(string $username, string $token, bool $force = false): arr
         $notWritable = [];
         foreach (array_keys($files) as $relative) {
             $target = $root . '/' . $relative;
-            $dir = dirname($target);
-            if (is_file($target) ? !is_writable($target) : !is_writable($dir)) {
+            if (is_file($target) ? !is_writable($target) : !update_parent_writable($target)) {
                 $notWritable[] = $relative;
             }
         }
