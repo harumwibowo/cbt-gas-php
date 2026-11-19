@@ -1,7 +1,7 @@
 ================================================================================
 SARAN OPTIMALISASI PERFORMA, PERBAIKAN BUG, DAN PENGEMBANGAN FITUR
 Aplikasi : CBT GAS - Platform Ujian Online (PHP native + MySQL)
-Versi    : 2.0.0 (berkas VERSION)
+Versi    : 2.0.1 (berkas VERSION)
 Tanggal  : 2026-11-19
 Sifat    : dokumen saran. Seluruh item Bagian 1, Bagian 2, DAN Bagian 3 sudah
            diimplementasikan dan ditandai (SELESAI); dari Bagian 4, item 4.7

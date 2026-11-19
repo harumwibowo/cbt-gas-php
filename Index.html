@@ -478,6 +478,12 @@
     }
     .cbt-dock button:hover { transform: translateY(-2px); background: var(--cbt-brand-soft); }
     .cbt-dock .cbt-dock-main { background: var(--cbt-brand); color: var(--cbt-onbrand); border-color: transparent; }
+    .cbt-dock .cbt-dock-toggle { background: var(--cbt-surface); color: var(--cbt-brand); border-color: var(--cbt-brand-line); }
+    .cbt-dock .cbt-dock-toggle:hover { background: var(--cbt-brand-soft); }
+    /* Saat dock disembunyikan, hanya tombol toggle yang tetap tampil sebagai FAB */
+    .cbt-dock.is-collapsed button:not(.cbt-dock-toggle) { display: none !important; }
+    .cbt-dock.is-collapsed .cbt-dock-toggle { background: var(--cbt-brand); color: var(--cbt-onbrand); border-color: transparent; }
+    .cbt-dock.is-collapsed .cbt-dock-toggle:hover { filter: brightness(1.08); }
     .cbt-overlay {
       position: fixed; inset: 0; z-index: 60;
       background: rgba(16,27,34,.55); backdrop-filter: blur(6px);
@@ -13316,7 +13322,8 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     const $ = (s, r = document) => r.querySelector(s);
     const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
     const KEY = {
-      theme: 'cbt_ux_theme', brand: 'cbt_ux_brand', lang: 'cbt_ux_lang', onboard: 'cbt_ux_onboard_'
+      theme: 'cbt_ux_theme', brand: 'cbt_ux_brand', lang: 'cbt_ux_lang', onboard: 'cbt_ux_onboard_',
+      dockHidden: 'cbt_ux_dock_hidden'
     };
     const BRANDS = ['teal', 'hijau', 'hirup', 'marun'];
 
@@ -13330,6 +13337,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         savedNow: 'Tersimpan baru saja', savedAgo: 'Tersimpan {n} dtk lalu',
         online: 'Tersambung', offline: 'Tidak tersambung',
         themeChanged: 'Tema', brandChanged: 'Warna sekolah', langChanged: 'Bahasa',
+        dockHide: 'Sembunyikan tombol', dockShow: 'Tampilkan tombol',
         resultsEmpty: 'Tidak ada hasil. Muat data terlebih dahulu atau ubah kata kunci.',
         siswa: 'Siswa', ujian: 'Ujian', soal: 'Soal'
       },
@@ -13341,6 +13349,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         savedNow: 'Saved just now', savedAgo: 'Saved {n}s ago',
         online: 'Connected', offline: 'Offline',
         themeChanged: 'Theme', brandChanged: 'School colour', langChanged: 'Language',
+        dockHide: 'Hide buttons', dockShow: 'Show buttons',
         resultsEmpty: 'No results. Load the data first or try a different keyword.',
         siswa: 'Student', ujian: 'Exam', soal: 'Question'
       }
@@ -13389,6 +13398,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       applyI18n();
       const btn = $('#cbt-dock-lang');
       if (btn) btn.textContent = lang.toUpperCase();
+      refreshDock();
       if (typeof showToast === 'function') showToast(window.cbtT('langChanged') + ': ' + lang.toUpperCase(), 'success');
     }
 
@@ -13402,12 +13412,22 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         '<button id="cbt-dock-search" title="' + window.cbtT('search') + ' (Ctrl+K)" aria-label="' + window.cbtT('search') + '"><i data-lucide="search" class="w-5 h-5"></i></button>' +
         '<button id="cbt-dock-theme" title="' + window.cbtT('theme') + '" aria-label="' + window.cbtT('theme') + '"><i data-lucide="moon" class="w-5 h-5"></i></button>' +
         '<button id="cbt-dock-brand" title="' + window.cbtT('brand') + '" aria-label="' + window.cbtT('brand') + '"><i data-lucide="palette" class="w-5 h-5"></i></button>' +
-        '<button id="cbt-dock-lang" class="cbt-dock-main" title="' + window.cbtT('lang') + '" aria-label="' + window.cbtT('lang') + '">' + lang.toUpperCase() + '</button>';
+        '<button id="cbt-dock-lang" class="cbt-dock-main" title="' + window.cbtT('lang') + '" aria-label="' + window.cbtT('lang') + '">' + lang.toUpperCase() + '</button>' +
+        '<button id="cbt-dock-toggle" class="cbt-dock-toggle" title="' + window.cbtT('dockShow') + '" aria-label="' + window.cbtT('dockShow') + '" aria-expanded="false" aria-controls="cbt-ux-dock"><i data-lucide="settings" class="w-5 h-5"></i></button>';
       document.body.appendChild(dock);
       $('#cbt-dock-search').addEventListener('click', openSearch);
       $('#cbt-dock-theme').addEventListener('click', cycleTheme);
       $('#cbt-dock-brand').addEventListener('click', cycleBrand);
       $('#cbt-dock-lang').addEventListener('click', toggleLang);
+      $('#cbt-dock-toggle').addEventListener('click', toggleDock);
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        try { lucide.createIcons(); } catch (e) {}
+      }
+      refreshDock();
+    }
+    function toggleDock() {
+      const collapsed = localStorage.getItem(KEY.dockHidden) !== '0';
+      localStorage.setItem(KEY.dockHidden, collapsed ? '0' : '1');
       refreshDock();
     }
     function refreshDock() {
@@ -13415,6 +13435,16 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       if (!dock) return;
       const inExam = AppState.activeView === 'exam' || (AppState.runtime && AppState.runtime.isExamActive);
       dock.style.display = inExam ? 'none' : 'flex';
+      // Default: FAB tersembunyi. Hanya ditampilkan jika pengguna memilih '0'.
+      const collapsed = localStorage.getItem(KEY.dockHidden) !== '0';
+      dock.classList.toggle('is-collapsed', collapsed);
+      const toggle = $('#cbt-dock-toggle');
+      if (toggle) {
+        const label = window.cbtT(collapsed ? 'dockShow' : 'dockHide');
+        toggle.title = label;
+        toggle.setAttribute('aria-label', label);
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      }
       const role = ((AppState.user && AppState.user.role) || '').toLowerCase();
       const s = $('#cbt-dock-search');
       if (s) s.style.display = (role === 'admin' || role === 'guru') ? '' : 'none';
