@@ -1,5 +1,8 @@
 # CBT GAS — PHP 8 + MySQL
 
+[![CI](https://github.com/harumwibowo/cbt-gas-php/actions/workflows/ci.yml/badge.svg)](https://github.com/harumwibowo/cbt-gas-php/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/harumwibowo/cbt-gas-php?label=rilis)](https://github.com/harumwibowo/cbt-gas-php/releases)
+
 **Versi rilis:** `2.0.3` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
 proyek (satu baris, mis. `1.0.3`). Berkas ini ikut tersalin saat pembaruan dari GitHub,
 sehingga label versi di **kartu Pembaruan Aplikasi** dan di **halaman login** otomatis
