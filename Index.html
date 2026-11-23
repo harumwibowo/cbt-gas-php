@@ -773,14 +773,8 @@
                 </span>
               </div>
               <div class="p-1 space-y-0.5">
-                <button type="button" onclick="openAccountView(); closeAllUserDropdowns();" class="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-indigo-600 rounded-xl transition flex items-center gap-2.5 cursor-pointer">
-                  <i data-lucide="user-cog" class="w-4 h-4 text-slate-400"></i>
-                  <span>Pengaturan Akun</span>
-                </button>
-                <button type="button" onclick="closeAllUserDropdowns(); handleLogout();" class="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition flex items-center gap-2.5 cursor-pointer">
-                  <i data-lucide="log-out" class="w-4 h-4 text-rose-500"></i>
-                  <span>Keluar Akun</span>
-                </button>
+                <button type="button" onclick="openAccountView(); closeAllUserDropdowns();" class="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-indigo-600 rounded-xl transition flex items-center gap-2.5 cursor-pointer"><i data-lucide="user-cog" class="w-4 h-4 text-slate-400"></i> <span>Pengaturan Akun</span></button>
+                <button type="button" onclick="closeAllUserDropdowns(); handleLogout();" class="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition flex items-center gap-2.5 cursor-pointer"><i data-lucide="log-out" class="w-4 h-4 text-rose-500"></i> <span>Keluar Akun</span></button>
               </div>
             </div>
           </div>
@@ -845,11 +839,6 @@
             Kelola data pengguna, buat dan jadwalkan paket ujian, susun bank soal, dan pantau rekapitulasi nilai seluruh guru secara terpusat.
           </p>
         </div>
-        <div class="flex items-center gap-3 shrink-0 flex-wrap">
-          <button onclick="loadAdminDashboard()" class="px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl transition text-sm flex items-center gap-2 border border-white/10 shadow-sm cursor-pointer">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Refresh Data
-          </button>
-        </div>
       </div>
 
       <!-- Rail Menu Administrator -->
@@ -882,15 +871,12 @@
             </select>
           </div>
           <div class="flex items-center gap-2.5 w-full sm:w-auto flex-wrap justify-end">
-            <button type="button" onclick="openPrintExamCardsModal()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm cursor-pointer">
-              <i data-lucide="id-card" class="w-4 h-4"></i> Cetak Kartu Ujian
-            </button>
-            <button type="button" onclick="openImportUserModal()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm">
-              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Import Excel
-            </button>
-            <button type="button" onclick="openUserModal()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm">
-              <i data-lucide="user-plus" class="w-4 h-4"></i> Tambah Pengguna
-            </button>
+            <span id="users-selection-info" class="text-xs font-bold text-slate-500"></span>
+            <button type="button" id="btn-bulk-reset-users-password" onclick="confirmResetSelectedUsersPassword()" disabled class="p-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm cursor-pointer" title="Reset Password Pengguna Terpilih" aria-label="Reset Password Pengguna Terpilih"><i data-lucide="key-round" class="w-4 h-4"></i></button>
+            <button type="button" id="btn-bulk-delete-users" onclick="confirmDeleteSelectedUsers()" disabled class="p-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm cursor-pointer" title="Hapus Pengguna Terpilih" aria-label="Hapus Pengguna Terpilih"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            <button type="button" onclick="openPrintExamCardsModal()" class="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm cursor-pointer" title="Cetak Kartu Ujian" aria-label="Cetak Kartu Ujian"><i data-lucide="id-card" class="w-4 h-4"></i></button>
+            <button type="button" onclick="openImportUserModal()" class="p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm" title="Import Excel" aria-label="Import Excel"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i></button>
+            <button type="button" onclick="openUserModal()" class="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm" title="Tambah Pengguna" aria-label="Tambah Pengguna"><i data-lucide="user-plus" class="w-4 h-4"></i></button>
           </div>
         </div>
 
@@ -899,6 +885,9 @@
             <table class="w-full text-left text-sm text-slate-600">
               <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-extrabold border-b border-slate-200">
                 <tr>
+                  <th class="px-3 py-3 sm:px-4 sm:py-4 w-10">
+                    <input type="checkbox" id="users-select-all" onchange="toggleSelectAllUsers(this.checked)" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer align-middle" title="Pilih semua pengguna di halaman ini" aria-label="Pilih semua pengguna di halaman ini">
+                  </th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Nama Lengkap</th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Username</th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Peran</th>
@@ -921,6 +910,7 @@
                 <option value="25">25 / halaman</option>
                 <option value="50">50 / halaman</option>
                 <option value="100">100 / halaman</option>
+                <option value="all">Tampilkan Semua</option>
               </select>
             </div>
             <div id="users-page-buttons" class="flex items-center gap-1 flex-wrap justify-center"></div>
@@ -947,9 +937,8 @@
           </div>
           <div class="flex items-center gap-2.5 w-full sm:w-auto flex-wrap justify-end">
             <span id="admin-login-summary" class="text-xs font-bold text-slate-500"></span>
-            <button type="button" onclick="loadStudentLoginSessions('admin')" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-xs">
-              <i data-lucide="refresh-cw" class="w-4 h-4"></i> Segarkan
-            </button>
+            <button type="button" id="btn-bulk-reset-admin-login" onclick="confirmResetSelectedStudentLogins('admin')" disabled class="p-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm" title="Reset Login Siswa Terpilih" aria-label="Reset Login Siswa Terpilih"><i data-lucide="log-out" class="w-4 h-4"></i></button>
+            <button type="button" onclick="loadStudentLoginSessions('admin')" class="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-xs" title="Segarkan" aria-label="Segarkan"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
           </div>
         </div>
 
@@ -958,6 +947,9 @@
             <table class="w-full text-left text-sm text-slate-600">
               <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-extrabold border-b border-slate-200">
                 <tr>
+                  <th class="px-3 py-3 sm:px-4 sm:py-4 w-10">
+                    <input type="checkbox" id="admin-login-select-all" onchange="toggleSelectAllStudentLogins('admin', this.checked)" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer align-middle" title="Pilih semua siswa yang sedang login" aria-label="Pilih semua siswa yang sedang login">
+                  </th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Nama Siswa</th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Username</th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Kelas</th>
@@ -984,9 +976,7 @@
             <p class="text-xs text-slate-400">Kelola pembagian waktu/sesi peserta (misal: Sesi 1, Sesi 2) untuk pembatasan akses ujian.</p>
           </div>
           <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-            <button type="button" onclick="openSessionModal()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm">
-              <i data-lucide="plus-circle" class="w-4 h-4"></i> Tambah Sesi
-            </button>
+            <button type="button" onclick="openSessionModal()" class="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-1.5 shadow-sm" title="Tambah Sesi" aria-label="Tambah Sesi"><i data-lucide="plus-circle" class="w-4 h-4"></i></button>
           </div>
         </div>
 
@@ -1024,12 +1014,8 @@
             </div>
           </div>
           <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-            <button type="button" onclick="loadAdminDashboard()" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-xs">
-              <i data-lucide="refresh-cw" class="w-4 h-4"></i> Segarkan
-            </button>
-            <button type="button" onclick="openExamFormPage()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-2 shadow-sm cursor-pointer">
-              <i data-lucide="plus-circle" class="w-4 h-4"></i> Buat Ujian Baru
-            </button>
+            <button type="button" onclick="loadAdminDashboard()" class="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-xs" title="Segarkan" aria-label="Segarkan"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
+            <button type="button" onclick="openExamFormPage()" class="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-sm flex items-center gap-2 shadow-sm cursor-pointer" title="Buat Ujian Baru" aria-label="Buat Ujian Baru"><i data-lucide="plus-circle" class="w-4 h-4"></i></button>
           </div>
         </div>
 
@@ -1040,7 +1026,7 @@
 
       <!-- Tab: Rekap Ujian Admin -->
       <div id="admin-tab-results" class="hidden space-y-4">
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 flex-wrap">
           <div class="flex items-center gap-3 w-full sm:w-auto flex-wrap">
             <div class="flex items-center gap-2">
               <label class="text-xs font-bold uppercase text-slate-500">Pilih Ujian:</label>
@@ -1054,21 +1040,24 @@
                 <option value="">Semua Kelas</option>
               </select>
             </div>
+            <div class="flex items-center gap-2">
+              <label class="text-xs font-bold uppercase text-slate-500">Filter Status:</label>
+              <select id="filter-admin-result-status" onchange="applyAdminExamResultsFilter();" class="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium focus:ring-2 focus:ring-indigo-500">
+                <option value="">Semua Status</option>
+                <option value="SUBMITTED">Selesai</option>
+                <option value="MENGERJAKAN">Sedang Mengerjakan</option>
+                <option value="TERBLOKIR">Terblokir</option>
+              </select>
+            </div>
             <span id="admin-auto-refresh-indicator" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Auto-refresh aktif setiap 60 detik di latar belakang">
               <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Auto-refresh: 60s
             </span>
           </div>
-          <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
-            <button type="button" id="btn-regrade-admin" onclick="confirmRegradeExamResults('admin')" class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm" title="Hitung ulang nilai seluruh siswa memakai kunci jawaban terbaru">
-              <i data-lucide="calculator" class="w-4 h-4"></i> Nilai Ulang
-            </button>
-            <button type="button" onclick="loadAdminExamResultsTable()" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-xs">
-              <i data-lucide="refresh-cw" class="w-4 h-4"></i> Segarkan Data
-            </button>
-            <button type="button" onclick="printExamResults('admin')" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm">
-              <i data-lucide="printer" class="w-4 h-4"></i> Cetak / Simpan PDF
-            </button>
+          <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap sm:ml-auto">
+            <button type="button" id="btn-regrade-admin" onclick="confirmRegradeExamResults('admin')" class="p-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm" title="Hitung ulang nilai seluruh siswa memakai kunci jawaban terbaru" aria-label="Nilai Ulang"><i data-lucide="calculator" class="w-4 h-4"></i></button>
+            <button type="button" onclick="loadAdminExamResultsTable()" class="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-xs" title="Segarkan Data" aria-label="Segarkan Data"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
+            <button type="button" onclick="printExamResults('admin')" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm" title="Cetak / Simpan PDF" aria-label="Cetak / Simpan PDF"><i data-lucide="printer" class="w-4 h-4"></i></button>
           </div>
         </div>
 
@@ -1141,10 +1130,10 @@
                 <label class="block text-xs font-bold uppercase text-slate-500 mb-1.5">Logo Sekolah (Opsional)</label>
                 <input type="hidden" id="setting-logo-url">
                 <div class="flex flex-wrap items-center gap-2">
-                  <button type="button" onclick="document.getElementById('setting-logo-file').click()" class="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-                    <i data-lucide="upload" class="w-4 h-4"></i> <span id="setting-logo-label">Upload Logo</span>
+                  <button type="button" id="btn-upload-logo" onclick="document.getElementById('setting-logo-file').click()" class="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="Upload Logo" aria-label="Upload Logo">
+                    <i data-lucide="upload" class="w-4 h-4"></i>
                   </button>
-                  <button type="button" onclick="clearLogoImage()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">Hapus</button>
+                  <button type="button" onclick="clearLogoImage()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition" title="Hapus" aria-label="Hapus"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                   <span id="setting-logo-status" class="text-[11px] text-slate-400">Belum ada logo</span>
                   <input type="file" id="setting-logo-file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onchange="handleLogoImageUpload(event)" class="hidden">
                 </div>
@@ -1322,9 +1311,7 @@
                     <p class="text-xs text-slate-400">Konfigurasi API Key Gemini untuk generate butir soal otomatis &mdash; pilih modelnya di form Generate Soal AI</p>
                   </div>
                 </div>
-                <button type="button" id="btn-test-gemini" onclick="testGeminiConnectionFromAdmin()" class="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs flex items-center gap-2 border border-purple-200 transition">
-                  <i data-lucide="zap" class="w-4 h-4"></i> Cek Koneksi
-                </button>
+                <button type="button" id="btn-test-gemini" onclick="testGeminiConnectionFromAdmin()" class="p-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs flex items-center gap-2 border border-purple-200 transition" title="Cek Koneksi" aria-label="Cek Koneksi"><i data-lucide="zap" class="w-4 h-4"></i></button>
               </div>
 
               <!-- Status Cek Koneksi Container -->
@@ -1353,7 +1340,7 @@
                   </div>
                   <div>
                     <h3 class="font-extrabold text-slate-800 text-base">Pembaruan Aplikasi</h3>
-                    <p class="text-xs text-slate-400">Tarik versi terbaru langsung dari repositori GitHub &middot; <a href="https://github.com/harumwibowo/cbt-gas-php" target="_blank" rel="noopener" class="text-sky-600 hover:underline font-semibold">harumwibowo/cbt-gas-php</a></p>
+                    <p class="text-xs text-slate-400">Tarik versi terbaru langsung dari repositori GitHub</p>
                   </div>
                 </div>
                 <span id="app-update-badge" class="hidden text-[11px] font-bold px-3 py-1.5 rounded-full border"></span>
@@ -1370,12 +1357,8 @@
                 <div class="space-y-1.5">
                   <label class="block text-xs font-bold uppercase text-slate-500">Aksi</label>
                   <div class="flex flex-wrap gap-2">
-                    <button type="button" onclick="handleCheckAppUpdate()" id="btn-check-update" class="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition inline-flex items-center gap-2">
-                      <i data-lucide="search" class="w-4 h-4"></i> Cek Versi
-                    </button>
-                    <button type="button" onclick="handleAppUpdate()" id="btn-app-update" class="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-sky-600/30 inline-flex items-center gap-2">
-                      <i data-lucide="download-cloud" class="w-4 h-4"></i> Update
-                    </button>
+                    <button type="button" onclick="handleCheckAppUpdate()" id="btn-check-update" class="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition inline-flex items-center gap-2" title="Cek Versi" aria-label="Cek Versi"><i data-lucide="search" class="w-4 h-4"></i></button>
+                    <button type="button" onclick="handleAppUpdate()" id="btn-app-update" class="p-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-sky-600/30 inline-flex items-center gap-2" title="Update" aria-label="Update"><i data-lucide="download-cloud" class="w-4 h-4"></i></button>
                   </div>
                   <p class="text-[11px] text-slate-400 leading-relaxed">Berkas konfigurasi (<code class="bg-slate-100 px-1 rounded">config/database.json</code>, <code class="bg-slate-100 px-1 rounded">config/pass.key</code>) dan seluruh data ujian tidak diubah. Cadangan otomatis disimpan di <code class="bg-slate-100 px-1 rounded">storage/backups/</code>. Repositori bersifat publik sehingga pembaruan berjalan tanpa token GitHub.</p>
                 </div>
@@ -1383,12 +1366,8 @@
             </div>
 
           <div class="flex justify-end gap-3 pt-2">
-            <button type="button" onclick="loadAppSettings(true)" class="px-5 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-sm transition">
-              Muat Ulang Pengaturan
-            </button>
-            <button type="submit" id="btn-save-settings" class="px-7 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 flex items-center gap-2">
-              <i data-lucide="save" class="w-4 h-4"></i> Simpan Pengaturan
-            </button>
+            <button type="button" onclick="loadAppSettings(true)" class="p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-sm transition" title="Muat Ulang Pengaturan" aria-label="Muat Ulang Pengaturan"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
+            <button type="submit" id="btn-save-settings" class="px-7 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Simpan Pengaturan</button>
           </div>
         </form>
       </div>
@@ -1456,8 +1435,8 @@
         </div>
 
         <div class="pt-4 flex justify-end gap-3">
-          <button type="button" onclick="closeUserModal()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800">Batal</button>
-          <button type="submit" id="btn-save-user" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition">Simpan</button>
+          <button type="button" onclick="closeUserModal()" class="p-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+          <button type="submit" id="btn-save-user" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Simpan</button>
         </div>
       </form>
     </div>
@@ -1485,8 +1464,8 @@
         </div>
 
         <div class="pt-4 flex justify-end gap-3">
-          <button type="button" onclick="closeSessionModal()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800">Batal</button>
-          <button type="submit" id="btn-save-session" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition">Simpan Sesi</button>
+          <button type="button" onclick="closeSessionModal()" class="p-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+          <button type="submit" id="btn-save-session" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Simpan Sesi</button>
         </div>
       </form>
     </div>
@@ -1517,9 +1496,7 @@
             <p class="text-xs font-bold text-slate-700">Gunakan format kolom yang sesuai:</p>
             <p class="text-[11px] text-slate-500 mt-0.5">Kolom: <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700">username</code>, <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700">password</code>, <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700">nama_lengkap</code>, <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700">role</code>, <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700">tingkat</code>, <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700">kelas</code>, <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700">sesi</code></p>
           </div>
-          <button type="button" onclick="downloadUserTemplate()" class="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-sm">
-            <i data-lucide="download" class="w-3.5 h-3.5 text-slate-500"></i> Unduh Format
-          </button>
+          <button type="button" onclick="downloadUserTemplate()" class="p-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-sm" title="Unduh Format" aria-label="Unduh Format"><i data-lucide="download" class="w-3.5 h-3.5 text-slate-500"></i></button>
         </div>
 
         <!-- Step 2: File Picker Area -->
@@ -1565,12 +1542,9 @@
 
         <!-- Action Buttons -->
         <div class="pt-3 flex justify-end gap-3 border-t border-slate-100">
-          <button type="button" onclick="closeImportUserModal()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800">
-            Batal
-          </button>
-          <button type="button" id="btn-execute-import" onclick="executeImportUsers()" disabled class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm transition flex items-center gap-2 shadow-sm">
+          <button type="button" onclick="closeImportUserModal()" class="p-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+          <button type="button" id="btn-execute-import" onclick="executeImportUsers()" disabled class="p-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm transition flex items-center gap-2 shadow-sm" title="Pilih Berkas Dulu" aria-label="Pilih Berkas Dulu">
             <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-            <span id="btn-import-text">Pilih Berkas Dulu</span>
           </button>
         </div>
       </div>
@@ -1620,14 +1594,8 @@
                 </span>
               </div>
               <div class="p-1 space-y-0.5">
-                <button type="button" onclick="openAccountView(); closeAllUserDropdowns();" class="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-purple-600 rounded-xl transition flex items-center gap-2.5 cursor-pointer">
-                  <i data-lucide="user-cog" class="w-4 h-4 text-slate-400"></i>
-                  <span>Pengaturan Akun</span>
-                </button>
-                <button type="button" onclick="closeAllUserDropdowns(); handleLogout();" class="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition flex items-center gap-2.5 cursor-pointer">
-                  <i data-lucide="log-out" class="w-4 h-4 text-rose-500"></i>
-                  <span>Keluar Akun</span>
-                </button>
+                <button type="button" onclick="openAccountView(); closeAllUserDropdowns();" class="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-purple-600 rounded-xl transition flex items-center gap-2.5 cursor-pointer"><i data-lucide="user-cog" class="w-4 h-4 text-slate-400"></i> <span>Pengaturan Akun</span></button>
+                <button type="button" onclick="closeAllUserDropdowns(); handleLogout();" class="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition flex items-center gap-2.5 cursor-pointer"><i data-lucide="log-out" class="w-4 h-4 text-rose-500"></i> <span>Keluar Akun</span></button>
               </div>
             </div>
           </div>
@@ -1650,14 +1618,7 @@
           </p>
         </div>
         <div class="flex items-center gap-3 shrink-0 flex-wrap">
-          <button type="button" onclick="loadTeacherDashboard()" class="px-4 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl transition text-sm flex items-center gap-2 border border-white/10 shadow-sm cursor-pointer">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-            <span>Refresh Data</span>
-          </button>
-          <button type="button" onclick="openExamFormPage()" class="px-5 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition text-sm flex items-center gap-2 shadow-lg shadow-purple-600/30 cursor-pointer">
-            <i data-lucide="plus-circle" class="w-4 h-4"></i>
-            <span>Buat Ujian Baru</span>
-          </button>
+          <button type="button" onclick="openExamFormPage()" class="p-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition text-sm flex items-center gap-2 shadow-lg shadow-purple-600/30 cursor-pointer" title="Buat Ujian Baru" aria-label="Buat Ujian Baru"><i data-lucide="plus-circle" class="w-4 h-4"></i></button>
         </div>
       </div>
 
@@ -1681,7 +1642,7 @@
 
       <!-- Tab 2: Rekap Nilai -->
       <div id="guru-tab-results" class="hidden space-y-4">
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 flex-wrap">
           <div class="flex items-center gap-3 w-full sm:w-auto flex-wrap">
             <div class="flex items-center gap-2">
               <label class="text-xs font-bold uppercase text-slate-500">Pilih Ujian:</label>
@@ -1695,18 +1656,23 @@
                 <option value="">Semua Kelas</option>
               </select>
             </div>
+            <div class="flex items-center gap-2">
+              <label class="text-xs font-bold uppercase text-slate-500">Filter Status:</label>
+              <select id="filter-guru-result-status" onchange="applyGuruExamResultsFilter();" class="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium focus:ring-2 focus:ring-purple-500">
+                <option value="">Semua Status</option>
+                <option value="SUBMITTED">Selesai</option>
+                <option value="MENGERJAKAN">Sedang Mengerjakan</option>
+                <option value="TERBLOKIR">Terblokir</option>
+              </select>
+            </div>
             <span id="auto-refresh-indicator" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Auto-refresh aktif setiap 60 detik di latar belakang">
               <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Auto-refresh: 60s
             </span>
           </div>
-          <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
-            <button type="button" id="btn-regrade-guru" onclick="confirmRegradeExamResults('guru')" class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm" title="Hitung ulang nilai seluruh siswa memakai kunci jawaban terbaru">
-              <i data-lucide="calculator" class="w-4 h-4"></i> Nilai Ulang
-            </button>
-            <button onclick="printExamResults()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer">
-              <i data-lucide="printer" class="w-4 h-4"></i> Cetak / Simpan PDF
-            </button>
+          <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap sm:ml-auto">
+            <button type="button" id="btn-regrade-guru" onclick="confirmRegradeExamResults('guru')" class="p-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm" title="Hitung ulang nilai seluruh siswa memakai kunci jawaban terbaru" aria-label="Nilai Ulang"><i data-lucide="calculator" class="w-4 h-4"></i></button>
+            <button onclick="printExamResults()" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer" title="Cetak / Simpan PDF" aria-label="Cetak / Simpan PDF"><i data-lucide="printer" class="w-4 h-4"></i></button>
           </div>
         </div>
 
@@ -1752,12 +1718,9 @@
           </div>
           <div class="flex items-center gap-2.5 w-full sm:w-auto flex-wrap justify-end">
             <span id="guru-login-summary" class="text-xs font-bold text-slate-500"></span>
-            <button type="button" onclick="openPrintExamCardsModal()" class="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm">
-              <i data-lucide="id-card" class="w-4 h-4"></i> Cetak Kartu Ujian
-            </button>
-            <button type="button" onclick="loadStudentLoginSessions('guru')" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-xs">
-              <i data-lucide="refresh-cw" class="w-4 h-4"></i> Segarkan
-            </button>
+            <button type="button" id="btn-bulk-reset-guru-login" onclick="confirmResetSelectedStudentLogins('guru')" disabled class="p-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm" title="Reset Login Siswa Terpilih" aria-label="Reset Login Siswa Terpilih"><i data-lucide="log-out" class="w-4 h-4"></i></button>
+            <button type="button" onclick="openPrintExamCardsModal()" class="p-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm" title="Cetak Kartu Ujian" aria-label="Cetak Kartu Ujian"><i data-lucide="id-card" class="w-4 h-4"></i></button>
+            <button type="button" onclick="loadStudentLoginSessions('guru')" class="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-xs" title="Segarkan" aria-label="Segarkan"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
           </div>
         </div>
 
@@ -1766,6 +1729,9 @@
             <table class="w-full text-left text-sm text-slate-600">
               <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-extrabold border-b border-slate-200">
                 <tr>
+                  <th class="px-3 py-3 sm:px-4 sm:py-4 w-10">
+                    <input type="checkbox" id="guru-login-select-all" onchange="toggleSelectAllStudentLogins('guru', this.checked)" class="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer align-middle" title="Pilih semua siswa yang sedang login" aria-label="Pilih semua siswa yang sedang login">
+                  </th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Nama Siswa</th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Username</th>
                   <th class="px-3 py-3 sm:px-6 sm:py-4">Kelas</th>
@@ -1823,18 +1789,10 @@
       <!-- PANEL: DAFTAR BUTIR SOAL -->
       <div id="bank-panel-questions">
         <div class="flex items-center justify-end gap-2 flex-wrap mb-4">
-          <button type="button" onclick="openImportQuestionModal()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition" title="Impor Soal dari Berkas Excel (.xlsx, .xls, .csv)">
-            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Import Excel
-          </button>
-          <button type="button" onclick="openAiGenerateModal()" class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition">
-            <i data-lucide="sparkles" class="w-4 h-4"></i> Generate Soal AI
-          </button>
-          <button type="button" onclick="openTextFormModal()" class="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition" title="Tambah Teks / Konteks / Stimulan yang muncul di atas pertanyaan">
-            <i data-lucide="file-text" class="w-4 h-4"></i> Tambah Teks
-          </button>
-          <button type="button" onclick="openQuestionFormModal()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm">
-            <i data-lucide="plus" class="w-4 h-4"></i> Tambah Butir Soal
-          </button>
+          <button type="button" onclick="openImportQuestionModal()" class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition" title="Impor Soal dari Berkas Excel (.xlsx, .xls, .csv)" aria-label="Import Excel"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i></button>
+          <button type="button" onclick="openAiGenerateModal()" class="p-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition" title="Generate Soal AI" aria-label="Generate Soal AI"><i data-lucide="sparkles" class="w-4 h-4"></i></button>
+          <button type="button" onclick="openTextFormModal()" class="p-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition" title="Tambah Teks / Konteks / Stimulan yang muncul di atas pertanyaan" aria-label="Tambah Teks"><i data-lucide="file-text" class="w-4 h-4"></i></button>
+          <button type="button" onclick="openQuestionFormModal()" class="p-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm" title="Tambah Butir Soal" aria-label="Tambah Butir Soal"><i data-lucide="plus" class="w-4 h-4"></i></button>
         </div>
 
         <div id="bank-q-list" class="space-y-4">
@@ -1848,9 +1806,7 @@
           <p class="text-xs text-slate-500 font-medium max-w-md">
             Teks / konteks / stimulan yang tampil di atas pertanyaan pada halaman ujian siswa. Klik judul teks untuk melihat preview dan butir soal yang memakainya.
           </p>
-          <button type="button" onclick="openTextFormModal()" class="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition shrink-0">
-            <i data-lucide="plus" class="w-4 h-4"></i> Tambah Teks
-          </button>
+          <button type="button" onclick="openTextFormModal()" class="p-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition shrink-0" title="Tambah Teks" aria-label="Tambah Teks"><i data-lucide="plus" class="w-4 h-4"></i></button>
         </div>
 
         <div id="text-list" class="space-y-2">
@@ -1934,11 +1890,9 @@
 
           <!-- Action Buttons -->
           <div class="flex justify-end gap-3">
-            <button type="button" onclick="closeTextFormModal()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition rounded-xl hover:bg-slate-100">Tutup</button>
-            <button type="button" onclick="resetTextForm()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition rounded-xl hover:bg-slate-100">Reset Form</button>
-            <button type="submit" id="btn-save-text" class="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2">
-              <i data-lucide="save" class="w-4 h-4"></i> Simpan Teks
-            </button>
+            <button type="button" onclick="closeTextFormModal()" class="p-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition rounded-xl hover:bg-slate-100" title="Tutup" aria-label="Tutup"><i data-lucide="x" class="w-4 h-4"></i></button>
+            <button type="button" onclick="resetTextForm()" class="p-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition rounded-xl hover:bg-slate-100" title="Reset Form" aria-label="Reset Form"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
+            <button type="submit" id="btn-save-text" class="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Simpan Teks</button>
           </div>
         </form>
       </div>
@@ -2018,9 +1972,7 @@
 
       <!-- Modal Footer -->
       <div class="pt-4 mt-4 border-t border-slate-100 flex justify-end shrink-0">
-        <button type="button" onclick="closeTextPreviewModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">
-          Tutup Preview
-        </button>
+        <button type="button" onclick="closeTextPreviewModal()" class="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition" title="Tutup Preview" aria-label="Tutup Preview"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
     </div>
   </div>
@@ -2058,9 +2010,7 @@
               <code class="bg-slate-200 px-1 py-0.5 rounded text-slate-700 font-mono">url_gambar</code>
             </p>
           </div>
-          <button type="button" onclick="downloadQuestionTemplate()" class="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-sm">
-            <i data-lucide="download" class="w-3.5 h-3.5 text-slate-500"></i> Unduh Template
-          </button>
+          <button type="button" onclick="downloadQuestionTemplate()" class="p-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-sm" title="Unduh Template" aria-label="Unduh Template"><i data-lucide="download" class="w-3.5 h-3.5 text-slate-500"></i></button>
         </div>
 
         <!-- Step 2: File Picker Area -->
@@ -2105,12 +2055,9 @@
 
       <!-- Action Buttons (Pinned Footer) -->
       <div class="pt-4 flex justify-end gap-3 border-t border-slate-100 shrink-0">
-        <button type="button" onclick="closeImportQuestionModal()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition rounded-xl hover:bg-slate-100">
-          Batal
-        </button>
-        <button type="button" id="btn-execute-import-q" onclick="executeImportQuestions()" disabled class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm transition flex items-center gap-2 shadow-sm">
+        <button type="button" onclick="closeImportQuestionModal()" class="p-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition rounded-xl hover:bg-slate-100" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+        <button type="button" id="btn-execute-import-q" onclick="executeImportQuestions()" disabled class="p-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm transition flex items-center gap-2 shadow-sm" title="Pilih Berkas Dulu" aria-label="Pilih Berkas Dulu">
           <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-          <span id="btn-import-q-text">Pilih Berkas Dulu</span>
         </button>
       </div>
     </div>
@@ -2245,11 +2192,60 @@
 
       <!-- Footer -->
       <div class="flex gap-3 pt-5">
-        <button type="button" onclick="closePrintExamCardsModal()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">Batal</button>
-        <button type="button" id="btn-print-exam-cards" onclick="printStudentExamCards()" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2">
-          <i data-lucide="printer" class="w-4 h-4"></i> Cetak Kartu
-        </button>
+        <button type="button" onclick="closePrintExamCardsModal()" class="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer"><i data-lucide="x" class="w-4 h-4"></i> Batal</button>
+        <button type="button" id="btn-print-exam-cards" onclick="printStudentExamCards()" class="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer"><i data-lucide="printer" class="w-4 h-4"></i> Cetak Kartu</button>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL: WAJIB GANTI PASSWORD (tidak bisa ditutup sebelum password diganti) -->
+  <div id="modal-force-password" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[95] hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-100">
+      <div class="flex items-start gap-3 pb-4 border-b border-slate-100">
+        <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-200">
+          <i data-lucide="shield-alert" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-black text-slate-800">Wajib Ganti Password</h3>
+          <p class="text-xs text-slate-500 font-medium leading-relaxed">
+            Akun Anda masih memakai password default dari Admin. Ganti password sekarang untuk melanjutkan.
+          </p>
+        </div>
+      </div>
+
+      <form id="form-force-password" onsubmit="handleForcePasswordChange(event)" class="pt-5 space-y-3.5">
+        <div class="space-y-1.5">
+          <label class="block text-xs font-bold uppercase text-slate-500" for="force-pass-current">Password Saat Ini</label>
+          <div class="relative">
+            <input type="password" id="force-pass-current" required autocomplete="current-password" placeholder="Password default (123456)" class="w-full px-4 py-2.5 pr-11 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+            <button type="button" onclick="togglePassVisibility('force-pass-current', this)" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:bg-slate-100" title="Lihat password" aria-label="Lihat password"><i data-lucide="eye" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-bold uppercase text-slate-500" for="force-pass-new">Password Baru</label>
+          <div class="relative">
+            <input type="password" id="force-pass-new" required minlength="8" autocomplete="new-password" placeholder="Minimal 8 karakter" class="w-full px-4 py-2.5 pr-11 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+            <button type="button" onclick="togglePassVisibility('force-pass-new', this)" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:bg-slate-100" title="Lihat password" aria-label="Lihat password"><i data-lucide="eye" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-bold uppercase text-slate-500" for="force-pass-confirm">Ulangi Password Baru</label>
+          <input type="password" id="force-pass-confirm" required minlength="8" autocomplete="new-password" placeholder="Ketik ulang password baru" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+        </div>
+
+        <p id="force-pass-error" class="hidden text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2"></p>
+
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          Password tidak boleh sama dengan username dan tidak boleh memakai password umum (mis. 123456).
+        </p>
+
+        <div class="flex gap-3 pt-1">
+          <button type="submit" id="btn-force-password" class="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/30"><i data-lucide="save" class="w-4 h-4"></i> Simpan Password Baru</button>
+          <button type="button" onclick="handleForcePasswordLogout()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer" title="Keluar" aria-label="Keluar"><i data-lucide="log-out" class="w-4 h-4"></i></button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -2293,9 +2289,7 @@
 
       <!-- Footer -->
       <div class="pt-4 border-t border-slate-100 flex justify-end shrink-0">
-        <button type="button" onclick="closeStudentViolationsModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">
-          Tutup
-        </button>
+        <button type="button" onclick="closeStudentViolationsModal()" class="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition" title="Tutup" aria-label="Tutup"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
     </div>
   </div>
@@ -2338,9 +2332,7 @@
               <div id="ai-gemini-model-field">
                 <div class="flex items-center justify-between gap-2">
                   <label class="block text-xs font-bold uppercase text-slate-500 mb-1.5">Model Gemini</label>
-                  <button type="button" id="btn-load-gemini-models" onclick="loadGeminiModelsFromAdmin()" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition mb-1.5">
-                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Load Model Terbaru
-                  </button>
+                  <button type="button" id="btn-load-gemini-models" onclick="loadGeminiModelsFromAdmin()" class="p-1.5 rounded-lg text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 flex items-center justify-center transition mb-1.5" title="Load Model Terbaru" aria-label="Load Model Terbaru"><i data-lucide="refresh-cw" class="w-3 h-3"></i></button>
                 </div>
                 <select id="setting-gemini-model" onchange="onGeminiModelSelectChange(this.value)" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 font-medium bg-white">
                   <option value="gemini-2.0-flash">gemini-2.0-flash (Direkomendasikan - Cepat & Cerdas)</option>
@@ -2425,9 +2417,7 @@
                 <label class="block text-xs font-bold uppercase text-slate-600 mb-1">1. Prompt (dihasilkan aplikasi, bukan AI)</label>
                 <p class="text-[11px] text-slate-500 leading-relaxed">Klik <strong>Generate Prompt</strong>, salin instruksi di bawah ini ke chatbot AI pilihan Anda (ChatGPT, Claude, Gemini, dll.), lalu salin JSON balasannya ke kolom kedua.</p>
               </div>
-              <button type="button" onclick="copyAiPrompt()" id="btn-copy-ai-prompt" class="px-3.5 py-2 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1.5 transition shrink-0">
-                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Salin Prompt
-              </button>
+              <button type="button" onclick="copyAiPrompt()" id="btn-copy-ai-prompt" class="p-2 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1.5 transition shrink-0" title="Salin Prompt" aria-label="Salin Prompt"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
             </div>
             <textarea id="ai-prompt-text" rows="8" readonly placeholder="Prompt akan muncul di sini setelah tombol Generate Prompt ditekan..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white font-mono text-xs text-slate-700 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
 
@@ -2448,15 +2438,9 @@
           </div>
 
           <div id="ai-form-footer" class="pt-3 border-t border-slate-100 flex items-center justify-end gap-3 flex-wrap">
-            <button type="button" onclick="closeAiGenerateModal()" class="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition">
-              Batal
-            </button>
-            <button type="button" id="btn-convert-ai-json" onclick="handleConvertAiJson()" class="hidden flex px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs items-center gap-2 shadow-lg shadow-emerald-600/20 transition">
-              <i data-lucide="braces" class="w-4 h-4"></i> Konversi JSON ke Soal
-            </button>
-            <button type="submit" id="btn-start-ai-generate" class="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition">
-              <i data-lucide="sparkles" class="w-4 h-4"></i> Generate Soal Sekarang
-            </button>
+            <button type="button" onclick="closeAiGenerateModal()" class="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+            <button type="button" id="btn-convert-ai-json" onclick="handleConvertAiJson()" class="hidden flex p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs items-center gap-2 shadow-lg shadow-emerald-600/20 transition" title="Konversi JSON ke Soal" aria-label="Konversi JSON ke Soal"><i data-lucide="braces" class="w-4 h-4"></i></button>
+            <button type="submit" id="btn-start-ai-generate" class="p-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition" title="Generate Soal Sekarang" aria-label="Generate Soal Sekarang"><i data-lucide="sparkles" class="w-4 h-4"></i></button>
           </div>
         </form>
       </div>
@@ -2468,9 +2452,7 @@
             <span class="text-xs font-bold uppercase text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200" id="ai-review-count-badge">Review Soal</span>
             <p class="text-xs text-slate-500 mt-1">Periksa atau edit pertanyaan, opsi, dan kunci jawaban sebelum disimpan ke Bank Soal.</p>
           </div>
-          <button type="button" onclick="backToAiForm()" class="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center gap-1 transition">
-            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Buat Ulang
-          </button>
+          <button type="button" onclick="backToAiForm()" class="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center gap-1 transition" title="Buat Ulang" aria-label="Buat Ulang"><i data-lucide="arrow-left" class="w-3.5 h-3.5"></i></button>
         </div>
 
         <!-- List Soal yang bisa diedit -->
@@ -2481,12 +2463,8 @@
         <div class="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
           <span class="text-xs text-slate-500 font-medium" id="ai-review-summary-text">Total: 0 soal | Bobot otomatis: 1 poin/soal</span>
           <div class="flex items-center gap-2">
-            <button type="button" onclick="backToAiForm()" class="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition">
-              Batal
-            </button>
-            <button type="button" id="btn-save-ai-questions" onclick="saveReviewedAiQuestions()" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition">
-              <i data-lucide="check" class="w-4 h-4"></i> Simpan ke Bank Soal
-            </button>
+            <button type="button" onclick="backToAiForm()" class="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+            <button type="button" id="btn-save-ai-questions" onclick="saveReviewedAiQuestions()" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition"><i data-lucide="check" class="w-4 h-4"></i> Simpan ke Bank Soal</button>
           </div>
         </div>
       </div>
@@ -2552,9 +2530,7 @@
       </div>
 
       <div class="pt-6 mt-6 border-t border-slate-100 flex justify-end">
-        <button type="button" onclick="closeQuestionPreviewModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">
-          Tutup Preview
-        </button>
+        <button type="button" onclick="closeQuestionPreviewModal()" class="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition" title="Tutup Preview" aria-label="Tutup Preview"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
     </div>
   </div>
@@ -2582,12 +2558,8 @@
                 <option value="">Tanpa teks</option>
               </select>
             </div>
-            <button type="button" onclick="previewSelectedText()" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-bold rounded-xl text-xs transition flex items-center gap-1.5 whitespace-nowrap" title="Preview teks yang dipilih">
-              <i data-lucide="eye" class="w-3.5 h-3.5"></i> Lihat
-            </button>
-            <button type="button" onclick="openTextFormModal()" class="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold rounded-xl text-xs transition flex items-center gap-1.5 whitespace-nowrap" title="Tambah Teks / Konteks / Stimulan baru">
-              <i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah Teks
-            </button>
+            <button type="button" onclick="previewSelectedText()" class="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-bold rounded-xl text-xs transition flex items-center gap-1.5 whitespace-nowrap" title="Preview teks yang dipilih" aria-label="Lihat"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
+            <button type="button" onclick="openTextFormModal()" class="p-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold rounded-xl text-xs transition flex items-center gap-1.5 whitespace-nowrap" title="Tambah Teks / Konteks / Stimulan baru" aria-label="Tambah Teks"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
           </div>
           <p class="text-[11px] text-slate-400 mt-1">Teks yang dipilih akan tampil di atas pertanyaan pada halaman ujian siswa.</p>
         </div>
@@ -2640,10 +2612,10 @@
           <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Gambar Soal (Opsional)</label>
           <input type="hidden" id="q-image-url">
           <div class="flex flex-wrap items-center gap-2">
-            <button type="button" onclick="document.getElementById('q-image-file').click()" class="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-              <i data-lucide="upload" class="w-4 h-4"></i> <span id="q-image-upload-label">Upload Gambar</span>
+            <button type="button" id="btn-upload-question-image" onclick="document.getElementById('q-image-file').click()" class="p-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="Upload Gambar" aria-label="Upload Gambar">
+              <i data-lucide="upload" class="w-4 h-4"></i>
             </button>
-            <button type="button" onclick="clearQuestionFormImage()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition">Hapus</button>
+            <button type="button" onclick="clearQuestionFormImage()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition" title="Hapus" aria-label="Hapus"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
             <span id="q-image-status" class="text-[11px] text-slate-400">Belum ada gambar</span>
             <input type="file" id="q-image-file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onchange="handleQuestionImageUpload(event)" class="hidden">
           </div>
@@ -2663,12 +2635,8 @@
               <p class="text-[11px] text-slate-400">Jumlah opsi: <strong id="q-options-count" class="text-purple-600">5</strong> / 10 (Maks 10, Default 5)</p>
             </div>
             <div class="flex items-center gap-1.5">
-              <button type="button" id="btn-add-option" onclick="addOptionRow()" class="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs transition flex items-center gap-1">
-                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah Opsi
-              </button>
-              <button type="button" id="btn-remove-option" onclick="removeOptionRow()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1">
-                <i data-lucide="minus" class="w-3.5 h-3.5"></i> Kurangi Opsi
-              </button>
+              <button type="button" id="btn-add-option" onclick="addOptionRow()" class="p-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs transition flex items-center gap-1" title="Tambah Opsi" aria-label="Tambah Opsi"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+              <button type="button" id="btn-remove-option" onclick="removeOptionRow()" class="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs transition flex items-center gap-1" title="Kurangi Opsi" aria-label="Kurangi Opsi"><i data-lucide="minus" class="w-3.5 h-3.5"></i></button>
             </div>
           </div>
           
@@ -2702,8 +2670,8 @@
         </div>
 
         <div class="pt-4 flex justify-end gap-3">
-          <button type="button" onclick="closeQuestionFormModal()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800">Batal</button>
-          <button type="submit" id="btn-save-question" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition">Simpan Soal</button>
+          <button type="button" onclick="closeQuestionFormModal()" class="p-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+          <button type="submit" id="btn-save-question" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Simpan Soal</button>
         </div>
       </form>
     </div>
@@ -2861,9 +2829,9 @@
                 <span id="exam-khusus-count-badge" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-fuchsia-100 text-fuchsia-800 border border-fuchsia-200">0 dipilih</span>
               </div>
               <div class="flex items-center gap-2 text-xs">
-                <button type="button" onclick="selectAllFilteredSpecialStudents()" class="text-purple-600 hover:text-purple-800 font-bold hover:underline">Pilih Semua</button>
+                <button type="button" onclick="selectAllFilteredSpecialStudents()" class="p-1.5 rounded-lg text-purple-600 hover:text-purple-800 hover:bg-purple-50 font-bold transition" title="Pilih Semua" aria-label="Pilih Semua"><i data-lucide="check-check" class="w-4 h-4"></i></button>
                 <span class="text-slate-300">|</span>
-                <button type="button" onclick="clearAllSpecialStudents()" class="text-rose-600 hover:text-rose-800 font-bold hover:underline">Kosongkan</button>
+                <button type="button" onclick="clearAllSpecialStudents()" class="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 font-bold transition" title="Kosongkan" aria-label="Kosongkan"><i data-lucide="eraser" class="w-4 h-4"></i></button>
               </div>
             </div>
 
@@ -2996,8 +2964,8 @@
 
         <!-- Aksi Formulir -->
         <div class="px-5 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/90 flex flex-col-reverse sm:flex-row justify-end items-stretch sm:items-center gap-2 sm:gap-3">
-          <button type="button" onclick="closeExamFormPage()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition rounded-xl hover:bg-slate-200/60 cursor-pointer">Batal</button>
-          <button type="submit" id="btn-save-exam" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition shadow-sm cursor-pointer">Simpan Jadwal</button>
+          <button type="button" onclick="closeExamFormPage()" class="p-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition rounded-xl hover:bg-slate-200/60 cursor-pointer" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+          <button type="submit" id="btn-save-exam" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition shadow-sm cursor-pointer flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Simpan Jadwal</button>
         </div>
       </form>
     </main>
@@ -3032,13 +3000,8 @@
       <div class="px-6 sm:px-8 py-3.5 border-t border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0 rounded-b-3xl">
         <span class="text-xs font-semibold text-slate-500" id="target-modal-summary-count">0 siswa terdaftar</span>
         <div class="flex items-center gap-2">
-          <button type="button" id="target-modal-btn-edit" onclick="handleEditFromTargetModal()" class="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs border border-purple-200 transition flex items-center gap-1.5 cursor-pointer">
-            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
-            <span>Edit Target</span>
-          </button>
-          <button type="button" onclick="closeExamTargetModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer">
-            Tutup
-          </button>
+          <button type="button" id="target-modal-btn-edit" onclick="handleEditFromTargetModal()" class="p-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs border border-purple-200 transition flex items-center gap-1.5 cursor-pointer" title="Edit Target" aria-label="Edit Target"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+          <button type="button" onclick="closeExamTargetModal()" class="p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer" title="Tutup" aria-label="Tutup"><i data-lucide="x" class="w-4 h-4"></i></button>
         </div>
       </div>
     </div>
@@ -3065,13 +3028,8 @@
         </div>
 
         <div class="flex items-center gap-2 pt-2">
-          <button type="button" onclick="closeStudentTokenModal()" class="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">
-            Batal
-          </button>
-          <button type="submit" id="btn-submit-token" class="flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-amber-500/25 flex items-center justify-center gap-1.5">
-            <span>Mulai</span>
-            <i data-lucide="arrow-right" class="w-4 h-4"></i>
-          </button>
+          <button type="button" onclick="closeStudentTokenModal()" class="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition" title="Batal" aria-label="Batal"><i data-lucide="x" class="w-4 h-4"></i></button>
+          <button type="submit" id="btn-submit-token" class="flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-amber-500/25 flex items-center justify-center gap-1.5" title="Mulai" aria-label="Mulai"><i data-lucide="arrow-right" class="w-4 h-4"></i></button>
         </div>
       </form>
     </div>
@@ -3163,8 +3121,8 @@
         <!-- Exam List -->
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-black text-slate-800">Daftar Ujian Anda</h3>
-          <button onclick="loadStudentDashboard()" class="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
-            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Segarkan Ujian
+          <button type="button" onclick="loadStudentDashboard()" class="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-emerald-600 hover:text-emerald-700 transition flex items-center justify-center cursor-pointer shadow-xs" title="Segarkan Ujian" aria-label="Segarkan Ujian">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </button>
         </div>
 
@@ -3180,8 +3138,8 @@
             <h3 class="text-lg font-black text-slate-800">Riwayat Ujian & Hasil Nilai</h3>
             <p class="text-xs text-slate-500">Daftar paket ujian yang telah Anda selesaikan beserta perolehan nilai akhirnya.</p>
           </div>
-          <button onclick="loadStudentDashboard()" class="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
-            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Segarkan Nilai
+          <button type="button" onclick="loadStudentDashboard()" class="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-emerald-600 hover:text-emerald-700 transition flex items-center justify-center cursor-pointer shadow-xs" title="Segarkan Nilai" aria-label="Segarkan Nilai">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </button>
         </div>
 
@@ -3537,7 +3495,9 @@
         list: [],
         classes: [],
         max_sessions: 1,
-        total_online: 0
+        total_online: 0,
+        selected: [],   // username siswa yang dicentang untuk reset massal
+        visible: { shown: 0, online: 0 }
       },
       
       // Exam Runtime State
@@ -3744,6 +3704,106 @@
       }
     }
 
+    // ==========================================
+    // WAJIB GANTI PASSWORD (PASSWORD DEFAULT)
+    // ==========================================
+    const MUST_CHANGE_PASSWORD_KEY = 'cbt_must_change_password';
+
+    /** Tandai sesi ini masih memakai password default (bertahan setelah reload). */
+    function markMustChangePassword() {
+      try { localStorage.setItem(MUST_CHANGE_PASSWORD_KEY, '1'); } catch (e) {}
+    }
+
+    function clearMustChangePassword() {
+      try { localStorage.removeItem(MUST_CHANGE_PASSWORD_KEY); } catch (e) {}
+    }
+
+    function mustChangePasswordPending() {
+      try { return localStorage.getItem(MUST_CHANGE_PASSWORD_KEY) === '1'; } catch (e) { return false; }
+    }
+
+    function showForcePasswordError(msg) {
+      const box = document.getElementById('force-pass-error');
+      if (!box) return;
+      box.textContent = msg || '';
+      box.classList.toggle('hidden', !msg);
+    }
+
+    /** Buka modal wajib ganti password; hanya bisa ditutup setelah password diganti. */
+    function openForcePasswordModal() {
+      const modal = document.getElementById('modal-force-password');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      showForcePasswordError('');
+      const current = document.getElementById('force-pass-current');
+      const next = document.getElementById('force-pass-new');
+      const confirm = document.getElementById('force-pass-confirm');
+      if (next) next.value = '';
+      if (confirm) confirm.value = '';
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        try { lucide.createIcons(); } catch (e) {}
+      }
+      if (current) setTimeout(() => current.focus(), 80);
+    }
+
+    function closeForcePasswordModal() {
+      const modal = document.getElementById('modal-force-password');
+      if (!modal) return;
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    async function handleForcePasswordChange(e) {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      if (!AppState.user || !AppState.token) return;
+
+      const current = (document.getElementById('force-pass-current').value || '').trim();
+      const next = (document.getElementById('force-pass-new').value || '').trim();
+      const confirm = (document.getElementById('force-pass-confirm').value || '').trim();
+
+      if (!current) return showForcePasswordError('Password saat ini wajib diisi.');
+      if (next.length < 8) return showForcePasswordError('Password baru minimal 8 karakter.');
+      if (next !== confirm) return showForcePasswordError('Ulangi password baru dengan benar.');
+      if (next === current) return showForcePasswordError('Password baru tidak boleh sama dengan password saat ini.');
+
+      const btn = document.getElementById('btn-force-password');
+      if (btn) {
+        btn.disabled = true;
+        setButtonIconAndLabel(btn, 'loader-2', 'Menyimpan...', 'w-4 h-4 animate-spin');
+      }
+      showForcePasswordError('');
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (btn) {
+            btn.disabled = false;
+            setButtonIconAndLabel(btn, 'save', 'Simpan Password Baru');
+          }
+          if (res && res.success) {
+            clearMustChangePassword();
+            document.getElementById('form-force-password').reset();
+            closeForcePasswordModal();
+            showToast('Password berhasil diganti. Selamat menggunakan aplikasi!', 'success');
+          } else {
+            showForcePasswordError((res && res.message) || 'Gagal mengganti password.');
+          }
+        })
+        .withFailureHandler(err => {
+          if (btn) {
+            btn.disabled = false;
+            setButtonIconAndLabel(btn, 'save', 'Simpan Password Baru');
+          }
+          showForcePasswordError('Koneksi gagal: ' + err.message);
+        })
+        .changePassword(AppState.user.username, AppState.token, current, next, confirm);
+    }
+
+    function handleForcePasswordLogout() {
+      // Flag dihapus di clearAuth() setelah logout benar-benar dikonfirmasi.
+      handleLogout();
+    }
+
     function saveAuth(token, user) {
       AppState.token = token;
       AppState.user = user;
@@ -3761,6 +3821,9 @@
       AppState.user = null;
       localStorage.removeItem('cbt_token');
       localStorage.removeItem('cbt_user');
+      clearMustChangePassword();
+      // Modal wajib ganti password tidak boleh tertinggal di halaman login.
+      closeForcePasswordModal();
     }
 
     function restoreSavedAuth() {
@@ -3775,6 +3838,8 @@
           // Kembali ke halaman terakhir sebelum reload (bila masih relevan)
           restoreLastNavigation();
           startSessionHeartbeat();
+          // Password default yang belum diganti tetap mengunci aplikasi setelah reload
+          if (mustChangePasswordPending()) setTimeout(() => openForcePasswordModal(), 400);
           // Verifikasi awal: buang sesi yang sudah dikeluarkan sebelum halaman dibuka
           setTimeout(checkSessionNow, 2500);
           return;
@@ -4150,7 +4215,14 @@
           sessionCheckInFlight = false;
           if (!AppState.token || AppState.token !== tokenAtStart) return; // sudah ganti sesi
           if (!res || res.success !== true) return; // server bermasalah → jangan keluarkan
-          if (res.valid !== false) return;
+          if (res.valid !== false) {
+            // Server menyatakan password masih default → paksa ganti sebelum lanjut.
+            if (res.must_change_password) {
+              markMustChangePassword();
+              openForcePasswordModal();
+            }
+            return;
+          }
 
           // Konfirmasi ulang setelah beberapa detik agar tidak keluar keliru
           setTimeout(() => {
@@ -4534,6 +4606,10 @@
                   saveAuth(vres.token, vres.user);
                   showToast(`Selamat datang, ${vres.user.nama_lengkap}!`, 'success');
                   routeUserRole(vres.user.role);
+                  if (vres.must_change_password) {
+                    markMustChangePassword();
+                    setTimeout(() => openForcePasswordModal(), 300);
+                  }
                 } else {
                   errBox.classList.remove('hidden');
                   errText.innerText = (vres && vres.message) || 'Kode 2FA tidak valid.';
@@ -4550,6 +4626,10 @@
             saveAuth(res.token, res.user);
             showToast(`Selamat datang, ${res.user.nama_lengkap}!`, 'success');
             routeUserRole(res.user.role);
+            if (res.must_change_password) {
+              markMustChangePassword();
+              setTimeout(() => openForcePasswordModal(), 300);
+            }
           } else {
             errBox.classList.remove('hidden');
             errText.innerText = (res && res.message) ? res.message : 'Login gagal. Periksa username dan password.';
@@ -4646,8 +4726,8 @@
         } else if (res.api_status === 0) {
           latest.innerHTML = 'Tidak dapat menghubungi GitHub (jaringan server). Periksa koneksi lalu coba lagi.';
         } else if (res.api_status === 404) {
-          latest.innerHTML = 'Repositori <strong class="text-slate-600">tidak ditemukan</strong> atau tidak bersifat publik. '
-            + 'Pastikan repo <strong class="text-slate-600">' + String(res.repo || '').replace('https://github.com/', '') + '</strong> tetap publik.';
+          latest.innerHTML = 'Repositori pembaruan <strong class="text-slate-600">tidak ditemukan</strong> atau tidak bersifat publik. '
+            + 'Pastikan repositori sumber pembaruan tetap dapat diakses.';
         } else if (!latestLabel && !latestShort) {
           latest.innerHTML = 'Tidak dapat menghubungi GitHub. Periksa koneksi server, lalu coba lagi.';
         } else if (res.version_changed) {
@@ -4689,11 +4769,11 @@
 
     function handleCheckAppUpdate() {
       const btn = document.getElementById('btn-check-update');
-      const original = btn ? btn.innerHTML : '';
-      if (btn) { btn.disabled = true; btn.innerHTML = 'Memeriksa...'; }
+      const originalTitle = btn ? btn.title : '';
+      if (btn) { btn.disabled = true; setIconButtonLabel(btn, 'Memeriksa...'); }
       google.script.run
         .withSuccessHandler(res => {
-          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          if (btn) { btn.disabled = false; setIconButtonLabel(btn, originalTitle || 'Cek Versi'); }
           if (res && res.success) {
             renderApplicationVersion(res);
             showToast(res.update_available
@@ -4704,7 +4784,7 @@
           }
         })
         .withFailureHandler(err => {
-          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          if (btn) { btn.disabled = false; setIconButtonLabel(btn, originalTitle || 'Cek Versi'); }
           showToast('Gagal memeriksa versi: ' + ((err && err.message) || 'kesalahan server'), 'error');
         })
         .getApplicationVersion(AppState.user.username, AppState.token, true);
@@ -4722,12 +4802,12 @@
       });
       if (!confirmed) return;
 
-      const original = btn ? btn.innerHTML : '';
-      if (btn) { btn.disabled = true; btn.innerHTML = 'Memperbarui...'; }
+      const originalTitle = btn ? btn.title : '';
+      if (btn) { btn.disabled = true; setIconButtonLabel(btn, 'Memperbarui...'); }
 
       google.script.run
         .withSuccessHandler(res => {
-          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          if (btn) { btn.disabled = false; setIconButtonLabel(btn, originalTitle || 'Update'); }
           if (res && res.success) {
             if (res.up_to_date) {
               showCustomAlert({ title: 'Sudah Versi Terbaru', message: res.message, type: 'info' });
@@ -4752,7 +4832,7 @@
           }
         })
         .withFailureHandler(err => {
-          if (btn) { btn.disabled = false; btn.innerHTML = original; }
+          if (btn) { btn.disabled = false; setIconButtonLabel(btn, originalTitle || 'Update'); }
           showCustomAlert({
             title: 'Pembaruan Gagal',
             message: (err && err.message) ? err.message : 'Server tidak merespons. Coba lagi beberapa saat.',
@@ -4981,7 +5061,8 @@
       }
 
       btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Menguji...`;
+      setIconButtonLabel(btn, 'Menguji...');
+      setIconButtonIcon(btn, 'loader-2', 'w-4 h-4 animate-spin');
       if (statusBox) {
         statusBox.className = 'p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 flex items-center gap-2 text-xs';
         statusBox.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-purple-600"></i> Menghubungi API Google Gemini...`;
@@ -4992,7 +5073,8 @@
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="zap" class="w-4 h-4"></i> Cek Koneksi`;
+          setIconButtonLabel(btn, 'Cek Koneksi');
+          setIconButtonIcon(btn, 'zap');
           if (res && res.success) {
             statusBox.className = 'p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-2 text-xs';
             statusBox.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0"></i> <span><strong>Koneksi Berhasil!</strong> Model: <code>${escapeHtml(res.model)}</code> (Latency: <strong>${res.latency} ms</strong>).</span>`;
@@ -5006,7 +5088,8 @@
         })
         .withFailureHandler(err => {
           btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="zap" class="w-4 h-4"></i> Cek Koneksi`;
+          setIconButtonLabel(btn, 'Cek Koneksi');
+          setIconButtonIcon(btn, 'zap');
           statusBox.className = 'p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-start gap-2 text-xs';
           statusBox.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 text-red-600 shrink-0 mt-0.5"></i> <span><strong>Kesalahan:</strong> ${escapeHtml(err.message)}</span>`;
           showToast('Gagal menguji koneksi: ' + err.message, 'error');
@@ -5021,13 +5104,15 @@
       const apiKey = (document.getElementById('setting-gemini-api-key')?.value || '').trim();
 
       btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Memuat...`;
+      setIconButtonLabel(btn, 'Memuat...');
+      setIconButtonIcon(btn, 'loader-2', 'w-3.5 h-3.5 animate-spin');
       lucide.createIcons();
 
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Load Model Terbaru`;
+          setIconButtonLabel(btn, 'Load Model Terbaru');
+          setIconButtonIcon(btn, 'refresh-cw', 'w-3.5 h-3.5');
           if (res && res.success && res.models && res.models.length > 0) {
             const currentVal = select.value || AppState.settings?.gemini_model;
             select.innerHTML = '';
@@ -5058,7 +5143,8 @@
         })
         .withFailureHandler(err => {
           btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Load Model Terbaru`;
+          setIconButtonLabel(btn, 'Load Model Terbaru');
+          setIconButtonIcon(btn, 'refresh-cw', 'w-3.5 h-3.5');
           showToast('Gagal memuat model: ' + err.message, 'error');
           lucide.createIcons();
         })
@@ -5122,7 +5208,7 @@
       const box = document.getElementById('logo-preview-box');
       const img = document.getElementById('logo-preview-img');
       const status = document.getElementById('setting-logo-status');
-      const label = document.getElementById('setting-logo-label');
+      const uploadBtn = document.getElementById('btn-upload-logo');
 
       if (status) {
         status.innerText = url
@@ -5130,7 +5216,7 @@
           : 'Belum ada logo';
         status.className = url ? 'text-[11px] font-semibold text-emerald-600' : 'text-[11px] text-slate-400';
       }
-      if (label) label.innerText = url ? 'Ganti Logo' : 'Upload Logo';
+      if (uploadBtn) setIconButtonLabel(uploadBtn, url ? 'Ganti Logo' : 'Upload Logo');
 
       if (!box || !img) return;
 
@@ -5148,7 +5234,7 @@
       e.preventDefault();
       const btn = document.getElementById('btn-save-settings');
       btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Menyimpan...`;
+      setButtonIconAndLabel(btn, 'loader-2', 'Menyimpan...', 'w-4 h-4 animate-spin');
 
       const payload = {
         nama_sekolah: document.getElementById('setting-nama-sekolah').value.trim(),
@@ -5194,7 +5280,7 @@
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Simpan Pengaturan`;
+          setButtonIconAndLabel(btn, 'save', 'Simpan Pengaturan');
           if (window.lucide && typeof lucide.createIcons === 'function') {
             try { lucide.createIcons(); } catch(err){}
           }
@@ -5219,7 +5305,7 @@
         })
         .withFailureHandler(err => {
           btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Simpan Pengaturan`;
+          setButtonIconAndLabel(btn, 'save', 'Simpan Pengaturan');
           showCustomAlert({
             title: 'Kesalahan Sistem',
             message: err.message,
@@ -5268,7 +5354,7 @@
           } else {
             showToast(res.message || 'Gagal memuat data admin', 'error');
             if (tbody) {
-              tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-red-500 font-bold">${escapeHtml(res.message || 'Gagal memuat data.')} <br><button onclick="loadAdminDashboard()" class="mt-2 text-xs text-indigo-600 underline font-semibold">Coba Muat Ulang</button></td></tr>`;
+              tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-red-500 font-bold">${escapeHtml(res.message || 'Gagal memuat data.')} <br><button onclick="loadAdminDashboard()" class="mt-2 inline-flex items-center justify-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition" title="Coba Muat Ulang" aria-label="Coba Muat Ulang"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button></td></tr>`;
             }
             if (res.message && res.message.includes('Sesi')) handleLogout();
           }
@@ -5285,13 +5371,13 @@
                 showUsersPage(fallbackRes.users);
               } else {
                 if (tbody) {
-                  tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-red-500 font-bold">Terjadi kendala saat memuat data: ${escapeHtml(err.message)} <br><button onclick="loadAdminDashboard()" class="mt-2 text-xs text-indigo-600 underline font-semibold">Coba Muat Ulang</button></td></tr>`;
+                  tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-red-500 font-bold">Terjadi kendala saat memuat data: ${escapeHtml(err.message)} <br><button onclick="loadAdminDashboard()" class="mt-2 inline-flex items-center justify-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition" title="Coba Muat Ulang" aria-label="Coba Muat Ulang"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button></td></tr>`;
                 }
               }
             })
             .withFailureHandler(() => {
               if (tbody) {
-                tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-red-500 font-bold">Terjadi kendala saat memuat data: ${escapeHtml(err.message)} <br><button onclick="loadAdminDashboard()" class="mt-2 text-xs text-indigo-600 underline font-semibold">Coba Muat Ulang</button></td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-red-500 font-bold">Terjadi kendala saat memuat data: ${escapeHtml(err.message)} <br><button onclick="loadAdminDashboard()" class="mt-2 inline-flex items-center justify-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition" title="Coba Muat Ulang" aria-label="Coba Muat Ulang"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button></td></tr>`;
               }
             })
             .getUsers(AppState.user.username, AppState.token);
@@ -5300,6 +5386,44 @@
     }
 
     /** Tandai tab aktif pada rail menu baru (data + aksesibilitas, bukan class hardcode). */
+    /**
+     * Tombol pada halaman guru & admin tampil sebagai ikon saja (tanpa teks).
+     * Label tombol disimpan pada tooltip (title) dan aria-label agar tetap
+     * terbaca pengguna serta pembaca layar.
+     */
+    function setIconButtonLabel(btn, label) {
+      if (!btn) return;
+      const text = String(label || '').replace(/\s+/g, ' ').trim();
+      if (!text) return;
+      btn.title = text;
+      btn.setAttribute('aria-label', text);
+    }
+
+    /**
+     * Perbarui ikon + teks tombol simpan (mis. spinner "Menyimpan..." lalu
+     * kembali ke "Simpan Pengaturan"). Dipakai tombol yang tetap berlabel teks.
+     */
+    function setButtonIconAndLabel(btn, iconName, label, sizeClass) {
+      if (!btn) return;
+      const size = sizeClass || 'w-4 h-4';
+      btn.innerHTML = `<i data-lucide="${iconName}" class="${size}"></i> ${escapeHtml(label)}`;
+      btn.removeAttribute('title');
+      btn.removeAttribute('aria-label');
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        try { lucide.createIcons(); } catch (e) {}
+      }
+    }
+
+    /** Ganti ikon di dalam tombol ikon-saja (mis. spinner saat proses berjalan). */
+    function setIconButtonIcon(btn, iconName, sizeClass) {
+      if (!btn) return;
+      const cls = sizeClass || 'w-4 h-4';
+      btn.innerHTML = `<i data-lucide="${iconName}" class="${cls}"></i>`;
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        try { lucide.createIcons(); } catch (e) {}
+      }
+    }
+
     function cbtSetActiveTab(prefix, names, active) {
       names.forEach(function (name) {
         const btn = document.getElementById(prefix + name);
@@ -5440,10 +5564,19 @@
     // Seluruh data pengguna sudah dimuat sekali dari server bersama filter
     // pencarian yang juga berjalan di klien, jadi pagination cukup memotong
     // hasil filter — tidak menambah permintaan RPC baru.
-    const usersPaging = { page: 1, perPage: 10, rows: [] };
+    const usersPaging = { page: 1, perPage: 10, rows: [], showAll: false };
+
+    /** Jumlah baris per halaman yang berlaku (mode "Tampilkan Semua" = seluruh hasil). */
+    function usersPerPage() {
+      if (usersPaging.showAll) return Math.max(1, usersPaging.rows.length);
+      return Math.max(1, usersPaging.perPage);
+    }
+
+    /** id_user yang dicentang pada tabel Data Pengguna (untuk hapus massal). */
+    let usersSelection = [];
 
     function usersPageCount() {
-      return Math.max(1, Math.ceil(usersPaging.rows.length / usersPaging.perPage));
+      return Math.max(1, Math.ceil(usersPaging.rows.length / usersPerPage()));
     }
 
     function renderUsersPagination() {
@@ -5457,8 +5590,9 @@
       if (usersPaging.page < 1) usersPaging.page = 1;
       const page = usersPaging.page;
 
-      const start = total === 0 ? 0 : (page - 1) * usersPaging.perPage + 1;
-      const end = Math.min(page * usersPaging.perPage, total);
+      const perPage = usersPerPage();
+      const start = total === 0 ? 0 : (page - 1) * perPage + 1;
+      const end = Math.min(page * perPage, total);
       info.textContent = total === 0
         ? 'Tidak ada pengguna'
         : `Menampilkan ${start}–${end} dari ${total} pengguna`;
@@ -5519,8 +5653,9 @@
       const pageCount = usersPageCount();
       if (usersPaging.page > pageCount) usersPaging.page = pageCount;
       if (usersPaging.page < 1) usersPaging.page = 1;
-      const start = (usersPaging.page - 1) * usersPaging.perPage;
-      renderUsersTable(usersPaging.rows.slice(start, start + usersPaging.perPage));
+      const perPage = usersPerPage();
+      const start = (usersPaging.page - 1) * perPage;
+      renderUsersTable(usersPaging.rows.slice(start, start + perPage));
       renderUsersPagination();
     }
 
@@ -5532,7 +5667,13 @@
 
     function changeUsersPerPage() {
       const select = document.getElementById('users-per-page');
-      usersPaging.perPage = Math.max(1, parseInt(select && select.value, 10) || 10);
+      const value = select ? String(select.value || '10') : '10';
+      if (value === 'all') {
+        usersPaging.showAll = true;
+      } else {
+        usersPaging.showAll = false;
+        usersPaging.perPage = Math.max(1, parseInt(value, 10) || 10);
+      }
       usersPaging.page = 1;
       showUsersPage(usersPaging.rows);
     }
@@ -5542,7 +5683,8 @@
       if (!tbody) return;
       tbody.innerHTML = '';
       if (!users || users.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-slate-400">Belum ada data pengguna di sheet Users.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-slate-400">Belum ada data pengguna di menu Pengguna.</td></tr>`;
+        updateUserSelectionUI();
         return;
       }
 
@@ -5576,7 +5718,11 @@
         const safeSesi = escapeHtml(u.sesi || '-');
         const safeStatus = escapeHtml(u.status_aktif || 'Aktif');
 
+        const isSuperAdmin = safeUname.toLowerCase() === 'admin';
+        const rowCheckbox = `<input type="checkbox" class="cbt-user-checkbox w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer align-middle" data-id="${safeId}" data-username="${safeUname}" onchange="toggleUserSelection(this.dataset.id, this.checked)" ${isSuperAdmin ? 'disabled' : ''} ${!isSuperAdmin && isUserSelected(u.id_user) ? 'checked' : ''} title="${isSuperAdmin ? 'Akun Super Admin tidak dapat dihapus' : 'Pilih ' + safeName}" aria-label="${isSuperAdmin ? 'Akun Super Admin tidak dapat dihapus' : 'Pilih ' + safeName}">`;
+
         tr.innerHTML = `
+          <td class="px-3 py-3 sm:px-4 sm:py-4">${rowCheckbox}</td>
           <td class="px-3 py-3 sm:px-6 sm:py-4 font-bold text-slate-800">${safeName}</td>
           <td class="px-3 py-3 sm:px-6 sm:py-4 font-mono text-xs text-slate-500">${safeUname}</td>
           <td class="px-3 py-3 sm:px-6 sm:py-4">
@@ -5594,7 +5740,11 @@
               <button type="button" onclick="editUser('${safeId}')" class="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition cursor-pointer" title="Edit Pengguna" aria-label="Edit Pengguna">
                 <i data-lucide="pencil" class="w-4 h-4"></i>
               </button>
-              ${safeUname.toLowerCase() !== 'admin' ? `<button type="button" data-id="${safeId}" data-username="${safeUname}" onclick="confirmDeleteUser(this.dataset.id, this.dataset.username)" class="p-2 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="Hapus Pengguna" aria-label="Hapus Pengguna">
+              ${safeUname.toLowerCase() !== String(AppState.user && AppState.user.username || '').toLowerCase()
+                ? `<button type="button" data-id="${safeId}" data-username="${safeUname}" data-name="${safeName}" onclick="confirmResetUserPassword(this.dataset.id, this.dataset.username, this.dataset.name)" class="p-2 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition cursor-pointer" title="Reset Password ke 123456" aria-label="Reset Password ke 123456">
+                <i data-lucide="key-round" class="w-4 h-4"></i>
+              </button>` : ''}
+              ${!isSuperAdmin ? `<button type="button" data-id="${safeId}" data-username="${safeUname}" onclick="confirmDeleteUser(this.dataset.id, this.dataset.username)" class="p-2 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="Hapus Pengguna" aria-label="Hapus Pengguna">
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
               </button>` : ''}
             </div>
@@ -5605,6 +5755,8 @@
       if (window.lucide && typeof lucide.createIcons === 'function') {
         try { lucide.createIcons(); } catch(e){}
       }
+
+      updateUserSelectionUI();
     }
 
     function renderSessionsTable(sessions, users) {
@@ -5644,8 +5796,8 @@
             <span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">${count} Siswa</span>
           </td>
           <td class="px-3 py-3 sm:px-6 sm:py-4 text-right space-x-2">
-            <button onclick="editSession('${sId}')" class="text-indigo-600 hover:text-indigo-900 font-bold text-xs">Edit</button>
-            <button type="button" data-id="${sId}" data-name="${sName}" onclick="confirmDeleteSession(this.dataset.id, this.dataset.name)" class="text-red-500 hover:text-red-700 font-bold text-xs">Hapus</button>
+            <button onclick="editSession('${sId}')" class="p-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition" title="Edit Sesi" aria-label="Edit Sesi"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+            <button type="button" data-id="${sId}" data-name="${sName}" onclick="confirmDeleteSession(this.dataset.id, this.dataset.name)" class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition" title="Hapus Sesi" aria-label="Hapus Sesi"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -5682,7 +5834,7 @@
       e.preventDefault();
       const btn = document.getElementById('btn-save-session');
       btn.disabled = true;
-      btn.innerText = 'Menyimpan...';
+      setButtonIconAndLabel(btn, 'loader-2', 'Menyimpan...', 'w-4 h-4 animate-spin');
 
       const payload = {
         id_sesi: document.getElementById('session-id').value,
@@ -5693,7 +5845,7 @@
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerText = 'Simpan Sesi';
+          setButtonIconAndLabel(btn, 'save', 'Simpan Sesi');
           if (res && res.success) {
             showToast(res.message, 'success');
             closeSessionModal();
@@ -5704,7 +5856,7 @@
         })
         .withFailureHandler(err => {
           btn.disabled = false;
-          btn.innerText = 'Simpan Sesi';
+          setButtonIconAndLabel(btn, 'save', 'Simpan Sesi');
           showToast(err.message || 'Koneksi gagal', 'error');
         })
         .saveSession(AppState.user.username, AppState.token, payload);
@@ -5758,6 +5910,167 @@
       });
     }
 
+    function isUserSelected(id) {
+      const key = String(id || '');
+      return usersSelection.some(x => String(x) === key);
+    }
+
+    function setUserSelected(id, checked) {
+      const key = String(id || '');
+      const list = usersSelection.filter(x => String(x) !== key);
+      if (checked) list.push(key);
+      usersSelection = list;
+    }
+
+    function clearUserSelection() {
+      usersSelection = [];
+    }
+
+    /** Buang pilihan yang sudah tidak ada di data pengguna saat ini. */
+    function pruneUserSelection() {
+      const existing = new Map((AppState.adminData?.users || []).map(u => [String(u.id_user), u]));
+      usersSelection = usersSelection.filter(id => {
+        const u = existing.get(String(id));
+        return Boolean(u) && String(u.username || '').toLowerCase() !== 'admin';
+      });
+    }
+
+    /** Sinkronkan tombol hapus massal, checkbox "pilih semua", dan info pilihan. */
+    function updateUserSelectionUI() {
+      const checkboxes = Array.from(document.querySelectorAll('#users-table-body .cbt-user-checkbox'));
+      const selectable = checkboxes.filter(cb => !cb.disabled);
+      const checkedCount = selectable.filter(cb => cb.checked).length;
+
+      const selectAll = document.getElementById('users-select-all');
+      if (selectAll) {
+        selectAll.disabled = selectable.length === 0;
+        selectAll.checked = selectable.length > 0 && checkedCount === selectable.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < selectable.length;
+      }
+
+      const total = usersSelection.length;
+      const info = document.getElementById('users-selection-info');
+      if (info) info.innerText = total > 0 ? `${total} dipilih` : '';
+
+      const bulkBtn = document.getElementById('btn-bulk-delete-users');
+      if (bulkBtn) {
+        bulkBtn.disabled = total === 0;
+        const label = total > 0 ? `Hapus ${total} Pengguna Terpilih` : 'Hapus Pengguna Terpilih';
+        bulkBtn.title = label;
+        bulkBtn.setAttribute('aria-label', label);
+      }
+
+      const bulkResetBtn = document.getElementById('btn-bulk-reset-users-password');
+      if (bulkResetBtn) {
+        bulkResetBtn.disabled = total === 0;
+        const label = total > 0 ? `Reset Password ${total} Pengguna Terpilih` : 'Reset Password Pengguna Terpilih';
+        bulkResetBtn.title = label;
+        bulkResetBtn.setAttribute('aria-label', label);
+      }
+    }
+
+    function toggleUserSelection(id, checked) {
+      setUserSelected(id, checked);
+      updateUserSelectionUI();
+    }
+
+    function toggleSelectAllUsers(checked) {
+      Array.from(document.querySelectorAll('#users-table-body .cbt-user-checkbox')).forEach(cb => {
+        if (cb.disabled) return;
+        cb.checked = checked;
+        setUserSelected(cb.dataset.id, checked);
+      });
+      updateUserSelectionUI();
+    }
+
+    async function confirmResetSelectedUsersPassword() {
+      pruneUserSelection();
+      // Akun sendiri tidak bisa direset dari sini (gunakan menu Ganti Password).
+      const selfKey = String(AppState.user && AppState.user.username || '').toLowerCase();
+      const ids = usersSelection
+        .slice()
+        .filter(id => {
+          const u = (AppState.adminData?.users || []).find(x => String(x.id_user) === String(id));
+          return u && String(u.username || '').toLowerCase() !== selfKey;
+        });
+
+      if (ids.length === 0) {
+        showToast('Pilih minimal satu pengguna (selain akun Anda sendiri) yang akan direset passwordnya.', 'info');
+        return;
+      }
+
+      const ok = await showCustomConfirm({
+        title: 'Reset Password Massal',
+        message: `Reset password ${ids.length} pengguna terpilih ke password default "123456"? Semua sesi login mereka akan dikeluarkan dan mereka diminta mengganti password setelah login.`,
+        type: 'warning',
+        confirmText: `Ya, Reset ${ids.length} Password`,
+        cancelText: 'Batal'
+      });
+      if (!ok) return;
+
+      const bulkBtn = document.getElementById('btn-bulk-reset-users-password');
+      if (bulkBtn) bulkBtn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.success) {
+            showCustomAlert({
+              title: 'Password Direset',
+              message: (res.message || 'Password berhasil direset.') + ' Password default: 123456.',
+              type: 'success'
+            });
+            clearUserSelection();
+            loadAdminDashboard();
+          } else {
+            updateUserSelectionUI();
+            showCustomAlert({ title: 'Gagal Reset Password', message: (res && res.message) || 'Terjadi kesalahan saat mereset password.', type: 'error' });
+          }
+        })
+        .withFailureHandler(err => {
+          updateUserSelectionUI();
+          showCustomAlert({ title: 'Kesalahan Sistem', message: err.message, type: 'error' });
+        })
+        .resetUsersPasswordBulk(AppState.user.username, AppState.token, ids);
+    }
+
+    async function confirmDeleteSelectedUsers() {
+      pruneUserSelection();
+      const ids = usersSelection.slice();
+      if (ids.length === 0) {
+        showToast('Pilih minimal satu pengguna yang akan dihapus.', 'info');
+        return;
+      }
+
+      const ok = await showCustomConfirm({
+        title: 'Hapus Pengguna Massal',
+        message: `Hapus ${ids.length} pengguna terpilih? Riwayat ujian mereka tetap tersimpan (dianonimkan), namun akun tidak dapat dipulihkan. Akun super admin dan akun yang sedang dipakai otomatis dilewati.`,
+        type: 'danger',
+        confirmText: `Ya, Hapus ${ids.length} Pengguna`,
+        cancelText: 'Batal'
+      });
+      if (!ok) return;
+
+      const bulkBtn = document.getElementById('btn-bulk-delete-users');
+      if (bulkBtn) bulkBtn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.success) {
+            showToast(res.message, 'success');
+            clearUserSelection();
+            loadAdminDashboard();
+          } else {
+            updateUserSelectionUI();
+            showCustomAlert({ title: 'Gagal Menghapus', message: (res && res.message) || 'Terjadi kesalahan saat menghapus pengguna.', type: 'error' });
+          }
+        })
+        .withFailureHandler(err => {
+          updateUserSelectionUI();
+          showCustomAlert({ title: 'Kesalahan Sistem', message: err.message, type: 'error' });
+        })
+        .deleteUsersBulk(AppState.user.username, AppState.token, ids);
+    }
+
     function filterUserTable() {
       if (!AppState.adminData || !AppState.adminData.users) return;
       const q = (document.getElementById('search-user').value || '').toLowerCase().trim();
@@ -5777,6 +6090,7 @@
         const matchSession = s === 'all' || userSession === s;
         return matchName && matchRole && matchClass && matchSession;
       });
+      pruneUserSelection();
       usersPaging.page = 1; // filter baru selalu mulai dari halaman pertama
       showUsersPage(filtered);
     }
@@ -5815,7 +6129,7 @@
 
       const tbody = document.getElementById(cfg.tbody);
       if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-slate-400 font-medium"><i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i> Memuat sesi login siswa...</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-8 text-center text-slate-400 font-medium"><i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i> Memuat sesi login siswa...</td></tr>`;
         if (window.lucide && typeof lucide.createIcons === 'function') {
           try { lucide.createIcons(); } catch(e){}
         }
@@ -5833,7 +6147,7 @@
           } else {
             const msg = (res && res.message) || 'Gagal memuat sesi login siswa.';
             if (tbody) {
-              tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-red-500 font-bold">${escapeHtml(msg)} <br><button type="button" data-view="${view}" onclick="loadStudentLoginSessions(this.dataset.view)" class="mt-2 text-xs underline font-semibold">Coba Muat Ulang</button></td></tr>`;
+              tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-8 text-center text-red-500 font-bold">${escapeHtml(msg)} <br><button type="button" data-view="${view}" onclick="loadStudentLoginSessions(this.dataset.view)" class="mt-2 inline-flex items-center justify-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition" title="Coba Muat Ulang" aria-label="Coba Muat Ulang"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button></td></tr>`;
             }
             showToast(msg, 'error');
           }
@@ -5841,7 +6155,7 @@
         .withFailureHandler(err => {
           const msg = 'Koneksi gagal: ' + err.message;
           if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-red-500 font-bold">${escapeHtml(msg)} <br><button type="button" data-view="${view}" onclick="loadStudentLoginSessions(this.dataset.view)" class="mt-2 text-xs underline font-semibold">Coba Muat Ulang</button></td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-8 text-center text-red-500 font-bold">${escapeHtml(msg)} <br><button type="button" data-view="${view}" onclick="loadStudentLoginSessions(this.dataset.view)" class="mt-2 inline-flex items-center justify-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition" title="Coba Muat Ulang" aria-label="Coba Muat Ulang"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button></td></tr>`;
           }
           showToast(msg, 'error');
         })
@@ -5869,6 +6183,126 @@
       select.value = found ? currentVal : 'ALL';
     }
 
+    /** Daftar username siswa yang dicentang untuk reset login massal. */
+    function studentLoginSelection() {
+      if (!Array.isArray(AppState.studentLogins.selected)) {
+        AppState.studentLogins.selected = [];
+      }
+      return AppState.studentLogins.selected;
+    }
+
+    function isStudentLoginSelected(username) {
+      const key = String(username || '').toLowerCase();
+      return studentLoginSelection().some(u => u.toLowerCase() === key);
+    }
+
+    function setStudentLoginSelected(username, checked) {
+      const key = String(username || '').toLowerCase();
+      const list = studentLoginSelection().filter(u => u.toLowerCase() !== key);
+      if (checked) list.push(username);
+      AppState.studentLogins.selected = list;
+    }
+
+    function clearStudentLoginSelection() {
+      AppState.studentLogins.selected = [];
+    }
+
+    /** Ringkasan "N siswa ditampilkan • X sedang login • Y dipilih". */
+    function renderStudentLoginSummary(view) {
+      const cfg = STUDENT_LOGIN_VIEWS[view];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.summary);
+      if (!el) return;
+      const shown = AppState.studentLogins.visible.shown || 0;
+      const online = AppState.studentLogins.visible.online || 0;
+      const picked = studentLoginSelection().length;
+      el.innerText = `${shown} siswa ditampilkan • ${online} sedang login` + (picked > 0 ? ` • ${picked} dipilih` : '');
+    }
+
+    /**
+     * Sinkronkan tombol "Reset Login Terpilih" dan checkbox "pilih semua"
+     * dengan baris yang tampil. Baris tanpa sesi aktif tidak bisa dicentang.
+     */
+    function updateStudentLoginSelectionUI(view) {
+      const cfg = STUDENT_LOGIN_VIEWS[view];
+      if (!cfg) return;
+
+      const checkboxes = Array.from(document.querySelectorAll(`#${cfg.tbody} .cbt-login-checkbox`));
+      const selectable = checkboxes.filter(cb => !cb.disabled);
+      const checkedCount = selectable.filter(cb => cb.checked).length;
+
+      const selectAll = document.getElementById(`${view}-login-select-all`);
+      if (selectAll) {
+        selectAll.disabled = selectable.length === 0;
+        selectAll.checked = selectable.length > 0 && checkedCount === selectable.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < selectable.length;
+      }
+
+      const bulkBtn = document.getElementById(`btn-bulk-reset-${view}-login`);
+      if (bulkBtn) {
+        const total = studentLoginSelection().length;
+        bulkBtn.disabled = total === 0;
+        const label = total > 0 ? `Reset Login ${total} Siswa Terpilih` : 'Reset Login Siswa Terpilih';
+        bulkBtn.title = label;
+        bulkBtn.setAttribute('aria-label', label);
+      }
+
+      renderStudentLoginSummary(view);
+    }
+
+    function toggleStudentLoginSelection(view, username, checked) {
+      setStudentLoginSelected(username, checked);
+      updateStudentLoginSelectionUI(view);
+    }
+
+    function toggleSelectAllStudentLogins(view, checked) {
+      const cfg = STUDENT_LOGIN_VIEWS[view];
+      if (!cfg) return;
+      Array.from(document.querySelectorAll(`#${cfg.tbody} .cbt-login-checkbox`)).forEach(cb => {
+        if (cb.disabled) return;
+        cb.checked = checked;
+        setStudentLoginSelected(cb.dataset.username, checked);
+      });
+      updateStudentLoginSelectionUI(view);
+    }
+
+    async function confirmResetSelectedStudentLogins(view) {
+      const selected = studentLoginSelection().slice();
+      if (selected.length === 0) {
+        showToast('Pilih minimal satu siswa yang akan direset.', 'info');
+        return;
+      }
+
+      const ok = await showCustomConfirm({
+        title: 'Reset Login Massal',
+        message: `Keluarkan sesi login aktif milik ${selected.length} siswa terpilih? Semua perangkat mereka akan keluar dan siswa wajib login kembali.`,
+        type: 'danger',
+        confirmText: `Ya, Reset ${selected.length} Sesi`,
+        cancelText: 'Batal'
+      });
+      if (!ok) return;
+
+      const bulkBtn = document.getElementById(`btn-bulk-reset-${view}-login`);
+      if (bulkBtn) bulkBtn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.success) {
+            showToast(res.message || 'Sesi login siswa terpilih berhasil direset.', 'success');
+            clearStudentLoginSelection();
+            loadStudentLoginSessions(view);
+          } else {
+            updateStudentLoginSelectionUI(view);
+            showCustomAlert({ title: 'Gagal Reset Login', message: (res && res.message) || 'Terjadi kesalahan saat mereset sesi login.', type: 'error' });
+          }
+        })
+        .withFailureHandler(err => {
+          updateStudentLoginSelectionUI(view);
+          showCustomAlert({ title: 'Kesalahan Sistem', message: err.message, type: 'error' });
+        })
+        .resetStudentLoginSessionsBulk(AppState.user.username, AppState.token, selected);
+    }
+
     function filterStudentLoginTable(view) {
       const cfg = STUDENT_LOGIN_VIEWS[view];
       if (!cfg) return;
@@ -5892,10 +6326,7 @@
       });
 
       const onlineCount = filtered.filter(s => Boolean(s.is_online)).length;
-      const summaryEl = document.getElementById(cfg.summary);
-      if (summaryEl) {
-        summaryEl.innerText = `${filtered.length} siswa ditampilkan • ${onlineCount} sedang login`;
-      }
+      AppState.studentLogins.visible = { shown: filtered.length, online: onlineCount };
 
       renderStudentLoginTable(view, filtered);
     }
@@ -5908,7 +6339,8 @@
 
       if (!rows || rows.length === 0) {
         const isEmptyAll = (AppState.studentLogins.list || []).length === 0;
-        tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-slate-400">${isEmptyAll ? 'Belum ada data siswa di sheet Users.' : 'Tidak ada siswa yang cocok dengan filter.'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-8 text-center text-slate-400">${isEmptyAll ? 'Belum ada data siswa di menu Pengguna.' : 'Tidak ada siswa yang cocok dengan filter.'}</td></tr>`;
+        updateStudentLoginSelectionUI(view);
         return;
       }
 
@@ -5936,7 +6368,13 @@
           ? escapeHtml(formatLogDate(s.last_login))
           : '<span class="text-slate-300 font-sans">Belum pernah</span>';
 
+        const canSelect = activeS > 0;
+        if (!canSelect) setStudentLoginSelected(s.username, false);
+        const accent = cfg.accent === 'purple' ? 'purple' : 'indigo';
+        const rowCheckbox = `<input type="checkbox" class="cbt-login-checkbox w-4 h-4 rounded border-slate-300 text-${accent}-600 focus:ring-${accent}-500 cursor-pointer align-middle" data-view="${view}" data-username="${safeUname}" onchange="toggleStudentLoginSelection(this.dataset.view, this.dataset.username, this.checked)" ${canSelect ? '' : 'disabled'} ${canSelect && isStudentLoginSelected(s.username) ? 'checked' : ''} title="${canSelect ? 'Pilih ' + safeName : 'Tidak ada sesi login aktif'}" aria-label="${canSelect ? 'Pilih ' + safeName : 'Tidak ada sesi login aktif'}">`;
+
         tr.innerHTML = `
+          <td class="px-3 py-3 sm:px-4 sm:py-4">${rowCheckbox}</td>
           <td class="px-3 py-3 sm:px-6 sm:py-4 font-bold text-slate-800">${safeName}</td>
           <td class="px-3 py-3 sm:px-6 sm:py-4 font-mono text-xs text-slate-500">${safeUname}</td>
           <td class="px-3 py-3 sm:px-6 sm:py-4 text-xs font-medium">${safeKelas}</td>
@@ -5948,7 +6386,7 @@
           <td class="px-3 py-3 sm:px-6 sm:py-4 font-mono text-[11px] text-slate-500">${safeLastLogin}</td>
           <td class="px-3 py-3 sm:px-6 sm:py-4 text-right">
             ${activeS > 0
-              ? `<button type="button" data-username="${safeUname}" data-name="${safeName}" onclick="confirmResetStudentSession(this.dataset.username, this.dataset.name)" class="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs transition">Reset Sesi</button>`
+              ? `<button type="button" data-username="${safeUname}" data-name="${safeName}" onclick="confirmResetStudentSession(this.dataset.username, this.dataset.name)" class="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition" title="Reset Sesi Login" aria-label="Reset Sesi Login"><i data-lucide="log-out" class="w-4 h-4"></i></button>`
               : '<span class="text-xs text-slate-300 font-semibold">—</span>'}
           </td>
         `;
@@ -5958,6 +6396,8 @@
       if (window.lucide && typeof lucide.createIcons === 'function') {
         try { lucide.createIcons(); } catch(e){}
       }
+
+      updateStudentLoginSelectionUI(view);
     }
 
     async function confirmResetStudentSession(username, nama) {
@@ -6071,7 +6511,7 @@
       e.preventDefault();
       const btn = document.getElementById('btn-save-user');
       btn.disabled = true;
-      btn.innerText = 'Menyimpan...';
+      setButtonIconAndLabel(btn, 'loader-2', 'Menyimpan...', 'w-4 h-4 animate-spin');
 
       const roleVal = document.getElementById('user-role').value;
       const isSiswa = (roleVal || '').toLowerCase() === 'siswa';
@@ -6091,7 +6531,7 @@
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerText = 'Simpan';
+          setButtonIconAndLabel(btn, 'save', 'Simpan');
           if (res && res.success) {
             showToast(res.message, 'success');
             closeUserModal();
@@ -6102,10 +6542,40 @@
         })
         .withFailureHandler(err => {
           btn.disabled = false;
-          btn.innerText = 'Simpan';
+          setButtonIconAndLabel(btn, 'save', 'Simpan');
           showCustomAlert({ title: 'Kesalahan Sistem', message: err.message, type: 'error' });
         })
         .saveUser(AppState.user.username, AppState.token, payload);
+    }
+
+    async function confirmResetUserPassword(id, username, nama) {
+      const label = (nama && nama !== username) ? `"${nama}" (${username})` : `"${username}"`;
+      const ok = await showCustomConfirm({
+        title: 'Reset Password Pengguna',
+        message: `Reset password ${label} ke password default "123456"? Semua sesi login pengguna ini akan dikeluarkan dan ia wajib mengganti password setelah login.`,
+        type: 'warning',
+        confirmText: 'Ya, Reset Password',
+        cancelText: 'Batal'
+      });
+      if (!ok) return;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.success) {
+            showCustomAlert({
+              title: 'Password Direset',
+              message: (res.message || 'Password berhasil direset.') + ' Password default: 123456.',
+              type: 'success'
+            });
+            loadAdminDashboard();
+          } else {
+            showCustomAlert({ title: 'Gagal Reset Password', message: (res && res.message) || 'Terjadi kesalahan saat mereset password.', type: 'error' });
+          }
+        })
+        .withFailureHandler(err => {
+          showCustomAlert({ title: 'Kesalahan Sistem', message: err.message, type: 'error' });
+        })
+        .resetUserPassword(AppState.user.username, AppState.token, id);
     }
 
     async function confirmDeleteUser(id, username) {
@@ -6199,8 +6669,8 @@
       const btn = document.getElementById('btn-execute-import');
       if (btn) {
         btn.disabled = true;
-        const textSpan = document.getElementById('btn-import-text');
-        if (textSpan) textSpan.innerText = 'Pilih Berkas Dulu';
+        setIconButtonLabel(btn, 'Pilih Berkas Dulu');
+        setIconButtonIcon(btn, 'check-circle-2');
       }
 
       AppState._pendingImportUsers = [];
@@ -6334,8 +6804,8 @@
           const btn = document.getElementById('btn-execute-import');
           if (btn) {
             btn.disabled = false;
-            const textSpan = document.getElementById('btn-import-text');
-            if (textSpan) textSpan.innerText = `Impor Sekarang (${parsedUsers.length} Pengguna)`;
+            setIconButtonLabel(btn, `Impor Sekarang (${parsedUsers.length} Pengguna)`);
+            setIconButtonIcon(btn, 'check-circle-2');
           }
 
           if (window.lucide && typeof lucide.createIcons === 'function') {
@@ -6359,13 +6829,10 @@
       }
 
       const btn = document.getElementById('btn-execute-import');
-      const textSpan = document.getElementById('btn-import-text');
       if (btn) {
         btn.disabled = true;
-        if (textSpan) textSpan.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin inline mr-1.5"></i> Mengimpor...`;
-        if (window.lucide && typeof lucide.createIcons === 'function') {
-          try { lucide.createIcons(); } catch(e){}
-        }
+        setIconButtonLabel(btn, 'Mengimpor...');
+        setIconButtonIcon(btn, 'loader-2', 'w-4 h-4 animate-spin');
       }
 
       google.script.run
@@ -6380,7 +6847,7 @@
             loadAdminDashboard();
           } else {
             if (btn) btn.disabled = false;
-            if (textSpan) textSpan.innerText = `Coba Impor Lagi (${AppState._pendingImportUsers.length} Pengguna)`;
+            setIconButtonLabel(btn, `Coba Impor Lagi (${AppState._pendingImportUsers.length} Pengguna)`);
             showCustomAlert({
               title: 'Gagal Mengimpor',
               message: res.message || 'Terjadi kesalahan saat menyimpan data ke database.',
@@ -6390,7 +6857,8 @@
         })
         .withFailureHandler(err => {
           if (btn) btn.disabled = false;
-          if (textSpan) textSpan.innerText = `Coba Impor Lagi (${AppState._pendingImportUsers.length} Pengguna)`;
+          setIconButtonLabel(btn, `Coba Impor Lagi (${AppState._pendingImportUsers.length} Pengguna)`);
+          setIconButtonIcon(btn, 'check-circle-2');
           showCustomAlert({
             title: 'Kesalahan Server',
             message: err.message,
@@ -6546,18 +7014,14 @@
       const onSuccess = () => {
         showToast(`Token "${text}" berhasil disalin ke clipboard!`, 'success');
         if (btn) {
-          const originalContent = btn.innerHTML;
+          const originalTitle = btn.title;
           btn.classList.add('bg-emerald-600', 'text-white');
-          btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i><span>Disalin!</span>';
-          if (window.lucide && typeof lucide.createIcons === 'function') {
-            try { lucide.createIcons(); } catch(e){}
-          }
+          setIconButtonLabel(btn, 'Disalin!');
+          setIconButtonIcon(btn, 'check', 'w-3.5 h-3.5');
           setTimeout(() => {
-            btn.innerHTML = originalContent;
+            setIconButtonLabel(btn, originalTitle || 'Salin Token');
+            setIconButtonIcon(btn, 'copy', 'w-3.5 h-3.5');
             btn.classList.remove('bg-emerald-600', 'text-white');
-            if (window.lucide && typeof lucide.createIcons === 'function') {
-              try { lucide.createIcons(); } catch(e){}
-            }
           }, 2000);
         }
       };
@@ -6728,14 +7192,14 @@
             </div>
             ${Number(ex.jumlah_soal_tampil) > 0 && Number(ex.jumlah_soal_tampil) < Number(ex.jumlah_soal) ? `<p class="text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-100 rounded-lg px-2 py-1 flex items-start gap-1"><i data-lucide="shuffle" class="w-3 h-3 mt-0.5 shrink-0"></i> <span>Tampil acak <strong>${Number(ex.jumlah_soal_tampil)}</strong> soal per siswa</span></p>` : ''}
             <div class="grid grid-cols-3 gap-1.5 sm:gap-2">
-              <button onclick="editExam('${escapeHtml(ex.id_ujian)}')" class="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1" title="Edit Ujian">
-                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Edit
+              <button onclick="editExam('${escapeHtml(ex.id_ujian)}')" class="py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1" title="Edit Ujian" aria-label="Edit Ujian">
+                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
               </button>
-              <button type="button" data-exam-id="${escapeHtml(ex.id_ujian)}" onclick="openBankSoalFromCard(this.dataset.examId)" class="px-2.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1" title="Kelola Butir Soal">
-                <i data-lucide="layers" class="w-3.5 h-3.5"></i> Soal
+              <button type="button" data-exam-id="${escapeHtml(ex.id_ujian)}" onclick="openBankSoalFromCard(this.dataset.examId)" class="py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1" title="Kelola Butir Soal" aria-label="Kelola Butir Soal">
+                <i data-lucide="layers" class="w-3.5 h-3.5"></i>
               </button>
-              <button onclick="confirmDeleteExam('${escapeHtml(ex.id_ujian)}')" class="px-2.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1" title="Hapus Ujian">
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Hapus
+              <button onclick="confirmDeleteExam('${escapeHtml(ex.id_ujian)}')" class="py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1" title="Hapus Ujian" aria-label="Hapus Ujian">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               </button>
             </div>
           </div>
@@ -6861,14 +7325,14 @@
             </div>
             ${Number(ex.jumlah_soal_tampil) > 0 && Number(ex.jumlah_soal_tampil) < Number(ex.jumlah_soal) ? `<p class="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-2 py-1 flex items-start gap-1"><i data-lucide="shuffle" class="w-3 h-3 mt-0.5 shrink-0"></i> <span>Tampil acak <strong>${Number(ex.jumlah_soal_tampil)}</strong> soal per siswa</span></p>` : ''}
             <div class="grid grid-cols-3 gap-1.5 sm:gap-2">
-              <button onclick="editExam('${escapeHtml(ex.id_ujian)}')" class="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1 cursor-pointer" title="Edit Ujian">
-                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Edit
+              <button onclick="editExam('${escapeHtml(ex.id_ujian)}')" class="py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1 cursor-pointer" title="Edit Ujian" aria-label="Edit Ujian">
+                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
               </button>
-              <button type="button" data-exam-id="${escapeHtml(ex.id_ujian)}" onclick="openBankSoalFromCard(this.dataset.examId)" class="px-2.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1 cursor-pointer" title="Kelola Butir Soal">
-                <i data-lucide="layers" class="w-3.5 h-3.5"></i> Soal
+              <button type="button" data-exam-id="${escapeHtml(ex.id_ujian)}" onclick="openBankSoalFromCard(this.dataset.examId)" class="py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1 cursor-pointer" title="Kelola Butir Soal" aria-label="Kelola Butir Soal">
+                <i data-lucide="layers" class="w-3.5 h-3.5"></i>
               </button>
-              <button onclick="confirmDeleteExam('${escapeHtml(ex.id_ujian)}')" class="px-2.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1 cursor-pointer" title="Hapus Ujian">
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Hapus
+              <button onclick="confirmDeleteExam('${escapeHtml(ex.id_ujian)}')" class="py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1 cursor-pointer" title="Hapus Ujian" aria-label="Hapus Ujian">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               </button>
             </div>
           </div>
@@ -8074,7 +8538,7 @@
       e.preventDefault();
       const btn = document.getElementById('btn-save-exam');
       btn.disabled = true;
-      btn.innerText = 'Menyimpan...';
+      setButtonIconAndLabel(btn, 'loader-2', 'Menyimpan...', 'w-4 h-4 animate-spin');
 
       // Validasi Jumlah Soal Tampil (0 = tampilkan semua soal)
       const jumlahTampilRaw = document.getElementById('exam-jumlah-tampil')?.value;
@@ -8084,7 +8548,7 @@
       if (isNaN(jumlahSoalTampil) || jumlahSoalTampil < 0) {
         showToast('Jumlah Soal Tampil harus berupa angka 0 atau lebih (0 = tampilkan semua soal).', 'warning');
         btn.disabled = false;
-        btn.innerText = 'Simpan Jadwal';
+        setButtonIconAndLabel(btn, 'save', 'Simpan Jadwal');
         return;
       }
 
@@ -8100,7 +8564,7 @@
       if (isKhusus && !specialStudentsVal) {
         showToast('Silakan pilih minimal 1 siswa untuk target peserta khusus.', 'warning');
         btn.disabled = false;
-        btn.innerText = 'Simpan Jadwal';
+        setButtonIconAndLabel(btn, 'save', 'Simpan Jadwal');
         return;
       }
 
@@ -8116,7 +8580,7 @@
         if (!targetSesi) {
           showToast('Target Sesi Peserta wajib dipilih atau ditentukan.', 'warning');
           btn.disabled = false;
-          btn.innerText = 'Simpan Jadwal';
+          setButtonIconAndLabel(btn, 'save', 'Simpan Jadwal');
           return;
         }
         if (!examTingkatVal) {
@@ -8148,7 +8612,7 @@
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerText = 'Simpan Jadwal';
+          setButtonIconAndLabel(btn, 'save', 'Simpan Jadwal');
           if (res && res.success) {
             showToast(res.message, 'success');
             closeExamFormPage();
@@ -8158,7 +8622,7 @@
         })
         .withFailureHandler(err => {
           btn.disabled = false;
-          btn.innerText = 'Simpan Jadwal';
+          setButtonIconAndLabel(btn, 'save', 'Simpan Jadwal');
           showToast(err.message, 'error');
         })
         .saveExam(AppState.user.username, AppState.token, payload);
@@ -8572,13 +9036,12 @@
       };
 
       btn.disabled = true;
-      const originalHtml = btn.innerHTML;
-      btn.innerHTML = 'Menyimpan...';
+      setButtonIconAndLabel(btn, 'loader-2', 'Menyimpan...', 'w-4 h-4 animate-spin');
 
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerHTML = originalHtml;
+          setButtonIconAndLabel(btn, 'save', 'Simpan Teks');
           if (res && res.success) {
             showToast(res.message || 'Teks/Konteks berhasil disimpan.', 'success');
             resetTextForm();
@@ -8589,7 +9052,7 @@
         })
         .withFailureHandler(err => {
           btn.disabled = false;
-          btn.innerHTML = originalHtml;
+          setButtonIconAndLabel(btn, 'save', 'Simpan Teks');
           showToast(err.message || 'Koneksi terputus saat menyimpan teks.', 'error');
         })
         .saveExamText(AppState.user.username, AppState.token, payload);
@@ -8695,8 +9158,8 @@
       const executeBtn = document.getElementById('btn-execute-import-q');
       if (executeBtn) {
         executeBtn.disabled = true;
-        const btnText = document.getElementById('btn-import-q-text');
-        if (btnText) btnText.innerText = 'Pilih Berkas Dulu';
+        setIconButtonLabel(executeBtn, 'Pilih Berkas Dulu');
+        setIconButtonIcon(executeBtn, 'check-circle-2');
       }
       
       AppState._pendingImportQuestions = [];
@@ -8837,8 +9300,8 @@
           const executeBtn = document.getElementById('btn-execute-import-q');
           if (executeBtn) {
             executeBtn.disabled = false;
-            const btnText = document.getElementById('btn-import-q-text');
-            if (btnText) btnText.innerText = `Impor ${parsedQuestions.length} Soal`;
+            setIconButtonLabel(executeBtn, `Impor ${parsedQuestions.length} Soal`);
+            setIconButtonIcon(executeBtn, 'check-circle-2');
           }
 
           if (window.lucide && typeof lucide.createIcons === 'function') {
@@ -8869,9 +9332,11 @@
       }
 
       const executeBtn = document.getElementById('btn-execute-import-q');
-      const btnText = document.getElementById('btn-import-q-text');
-      if (executeBtn) executeBtn.disabled = true;
-      if (btnText) btnText.innerText = 'Mengimpor ke Database...';
+      if (executeBtn) {
+        executeBtn.disabled = true;
+        setIconButtonLabel(executeBtn, 'Mengimpor ke Database...');
+        setIconButtonIcon(executeBtn, 'loader-2', 'w-4 h-4 animate-spin');
+      }
 
       google.script.run
         .withSuccessHandler(res => {
@@ -8894,7 +9359,8 @@
         })
         .withFailureHandler(err => {
           if (executeBtn) executeBtn.disabled = false;
-          if (btnText) btnText.innerText = `Coba Impor Lagi (${AppState._pendingImportQuestions.length} Soal)`;
+          setIconButtonLabel(executeBtn, `Coba Impor Lagi (${AppState._pendingImportQuestions.length} Soal)`);
+          setIconButtonIcon(executeBtn, 'check-circle-2');
           showCustomAlert({
             title: 'Koneksi Terputus',
             message: 'Pengiriman data ke server gagal: ' + err.message,
@@ -8986,7 +9452,7 @@
       const container = document.getElementById('q-image-preview-container');
       const img = document.getElementById('q-image-preview');
       const status = document.getElementById('q-image-status');
-      const label = document.getElementById('q-image-upload-label');
+      const uploadBtn = document.getElementById('btn-upload-question-image');
 
       if (status) {
         status.innerText = url
@@ -8994,7 +9460,7 @@
           : 'Belum ada gambar';
         status.className = url ? 'text-[11px] font-semibold text-emerald-600' : 'text-[11px] text-slate-400';
       }
-      if (label) label.innerText = url ? 'Ganti Gambar' : 'Upload Gambar';
+      if (uploadBtn) setIconButtonLabel(uploadBtn, url ? 'Ganti Gambar' : 'Upload Gambar');
 
       if (url) {
         img.src = url;
@@ -9075,12 +9541,11 @@
     function handleQuestionImageUpload(ev) {
       const input = ev && ev.target ? ev.target : document.getElementById('q-image-file');
       const file = input && input.files ? input.files[0] : null;
-      const btn = document.querySelector('#modal-question-form button[onclick*="q-image-file"]');
-      const label = document.getElementById('q-image-upload-label');
+      const btn = document.getElementById('btn-upload-question-image');
       if (!file) return;
 
-      const labelLama = label ? label.innerText : '';
-      if (label) label.innerText = 'Mengunggah...';
+      const labelLama = btn ? btn.title : '';
+      setIconButtonLabel(btn, 'Mengunggah...');
       if (btn) btn.disabled = true;
 
       uploadImageToDatabase(file)
@@ -9094,7 +9559,7 @@
         })
         .finally(() => {
           if (btn) btn.disabled = false;
-          if (label) label.innerText = document.getElementById('q-image-url').value ? 'Ganti Gambar' : labelLama || 'Upload Gambar';
+          setIconButtonLabel(btn, document.getElementById('q-image-url').value ? 'Ganti Gambar' : (labelLama || 'Upload Gambar'));
           if (input) input.value = '';
         });
     }
@@ -9103,10 +9568,10 @@
     function handleLogoImageUpload(ev) {
       const input = ev && ev.target ? ev.target : document.getElementById('setting-logo-file');
       const file = input && input.files ? input.files[0] : null;
-      const label = document.getElementById('setting-logo-label');
+      const uploadBtn = document.getElementById('btn-upload-logo');
       if (!file) return;
 
-      if (label) label.innerText = 'Mengunggah...';
+      setIconButtonLabel(uploadBtn, 'Mengunggah...');
 
       uploadImageToDatabase(file)
         .then(data => {
@@ -9118,7 +9583,7 @@
           showToast(err.message || 'Gagal mengunggah logo.', 'error');
         })
         .finally(() => {
-          if (label) label.innerText = document.getElementById('setting-logo-url').value ? 'Ganti Logo' : 'Upload Logo';
+          setIconButtonLabel(uploadBtn, document.getElementById('setting-logo-url').value ? 'Ganti Logo' : 'Upload Logo');
           if (input) input.value = '';
         });
     }
@@ -9283,11 +9748,11 @@
               ${pembahasanBadge}
             </div>
             <div class="flex items-center gap-1.5">
-              <button onclick="openQuestionPreviewModal('${escapeHtml(q.id_soal)}')" class="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs transition flex items-center gap-1" title="Lihat Tampilan Siswa">
-                <i data-lucide="eye" class="w-3.5 h-3.5"></i> Preview
+              <button onclick="openQuestionPreviewModal('${escapeHtml(q.id_soal)}')" class="p-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs transition flex items-center gap-1" title="Lihat Tampilan Siswa" aria-label="Lihat Tampilan Siswa">
+                <i data-lucide="eye" class="w-4 h-4"></i>
               </button>
-              <button onclick="editQuestion('${escapeHtml(q.id_soal)}')" class="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition flex items-center gap-1" title="Edit Soal">
-                <i data-lucide="edit-2" class="w-3.5 h-3.5"></i> Edit
+              <button onclick="editQuestion('${escapeHtml(q.id_soal)}')" class="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition flex items-center gap-1" title="Edit Soal" aria-label="Edit Soal">
+                <i data-lucide="edit-2" class="w-4 h-4"></i>
               </button>
               <button onclick="confirmDeleteQuestion('${escapeHtml(q.id_soal)}')" class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition" title="Hapus Soal">
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -9390,7 +9855,7 @@
       }
 
       btn.disabled = true;
-      btn.innerText = 'Menyimpan...';
+      setButtonIconAndLabel(btn, 'loader-2', 'Menyimpan...', 'w-4 h-4 animate-spin');
 
       const payload = {
         id_soal: document.getElementById('q-id').value,
@@ -9413,7 +9878,7 @@
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerText = 'Simpan Soal';
+          setButtonIconAndLabel(btn, 'save', 'Simpan Soal');
           if (res && res.success) {
             showToast(res.message, 'success');
             closeQuestionFormModal();
@@ -9424,7 +9889,7 @@
         })
         .withFailureHandler(err => {
           btn.disabled = false;
-          btn.innerText = 'Simpan Soal';
+          setButtonIconAndLabel(btn, 'save', 'Simpan Soal');
           showToast(err.message, 'error');
         })
         .saveQuestion(AppState.user.username, AppState.token, payload);
@@ -10015,8 +10480,8 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
 
       const btn = document.getElementById('btn-start-ai-generate');
       btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Menyusun Soal dengan AI...`;
-      lucide.createIcons();
+      setIconButtonLabel(btn, 'Menyusun Soal dengan AI...');
+      setIconButtonIcon(btn, 'loader-2', 'w-4 h-4 animate-spin');
 
       const params = {
         mata_pelajaran: mapel,
@@ -10037,13 +10502,13 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       // panggilan kecil (AI_GEN_CHUNK_SIZE per panggilan) lalu digabung.
       generateAiQuestionsChunked(params, jmlSoal, (done, total) => {
         if (total > AI_GEN_CHUNK_SIZE) {
-          btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Menyusun soal ${done}/${total}...`;
-          lucide.createIcons();
+          setIconButtonLabel(btn, `Menyusun soal ${done}/${total}...`);
+          setIconButtonIcon(btn, 'loader-2', 'w-4 h-4 animate-spin');
         }
       }).then(result => {
         btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4"></i> Generate Soal Sekarang`;
-        lucide.createIcons();
+        setIconButtonLabel(btn, 'Generate Soal Sekarang');
+        setIconButtonIcon(btn, 'sparkles');
         if (chosenModel && AppState.settings) AppState.settings.gemini_model = chosenModel;
 
         if (result.questions.length > 0) {
@@ -10208,14 +10673,12 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
 
       const btn = document.getElementById('btn-save-ai-questions');
       btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Menyimpan ke Database...`;
-      lucide.createIcons();
+      setButtonIconAndLabel(btn, 'loader-2', 'Menyimpan ke Database...', 'w-4 h-4 animate-spin');
 
       google.script.run
         .withSuccessHandler(res => {
           btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Simpan ke Bank Soal`;
-          lucide.createIcons();
+          setButtonIconAndLabel(btn, 'check', 'Simpan ke Bank Soal');
 
           if (res && res.success) {
             closeAiGenerateModal();
@@ -10435,23 +10898,43 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       }
     }
 
+    /**
+     * Normalisasi status pengerjaan siswa agar konsisten dipakai filter & badge:
+     * SUBMITTED = Selesai, TERBLOKIR = Terblokir, selain itu = Sedang Mengerjakan.
+     */
+    function normalizeResultStatus(status) {
+      const s = String(status || '').trim().toUpperCase();
+      if (s === 'SUBMITTED') return 'SUBMITTED';
+      if (s === 'TERBLOKIR') return 'TERBLOKIR';
+      return 'MENGERJAKAN';
+    }
+
+    /** Saring daftar hasil ujian berdasarkan nilai filter kelas & status (kosong = semua). */
+    function filterExamResults(results, classValue, statusValue) {
+      const cls = String(classValue || '').trim().toLowerCase();
+      const st = String(statusValue || '').trim().toUpperCase();
+      return (results || []).filter(r => {
+        if (cls && (r.kelas || '').trim().toLowerCase() !== cls) return false;
+        if (st && normalizeResultStatus(r.status) !== st) return false;
+        return true;
+      });
+    }
+
     function onGuruExamSelectChange() {
       const classFilter = document.getElementById('filter-guru-result-class');
       if (classFilter) classFilter.value = '';
+      const statusFilter = document.getElementById('filter-guru-result-status');
+      if (statusFilter) statusFilter.value = '';
       loadExamResultsTable();
       startExamResultsAutoRefresh();
     }
 
     function applyGuruExamResultsFilter() {
       const classFilter = document.getElementById('filter-guru-result-class');
-      const selectedClass = classFilter ? classFilter.value.trim() : '';
+      const statusFilter = document.getElementById('filter-guru-result-status');
       const allResults = AppState.currentExamResults?.results || [];
-      if (!selectedClass) {
-        renderExamResultsTable(allResults);
-      } else {
-        const filtered = allResults.filter(r => (r.kelas || '').trim().toLowerCase() === selectedClass.toLowerCase());
-        renderExamResultsTable(filtered);
-      }
+      const filtered = filterExamResults(allResults, classFilter ? classFilter.value : '', statusFilter ? statusFilter.value : '');
+      renderExamResultsTable(filtered, allResults.length > 0);
     }
 
     function loadExamResultsTable(isSilent = false) {
@@ -10600,20 +11083,18 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     function onAdminExamSelectChange() {
       const classFilter = document.getElementById('filter-admin-result-class');
       if (classFilter) classFilter.value = '';
+      const statusFilter = document.getElementById('filter-admin-result-status');
+      if (statusFilter) statusFilter.value = '';
       loadAdminExamResultsTable();
       startAdminExamResultsAutoRefresh();
     }
 
     function applyAdminExamResultsFilter() {
       const classFilter = document.getElementById('filter-admin-result-class');
-      const selectedClass = classFilter ? classFilter.value.trim() : '';
+      const statusFilter = document.getElementById('filter-admin-result-status');
       const allResults = AppState.currentExamResults?.results || [];
-      if (!selectedClass) {
-        renderAdminExamResultsTable(allResults);
-      } else {
-        const filtered = allResults.filter(r => (r.kelas || '').trim().toLowerCase() === selectedClass.toLowerCase());
-        renderAdminExamResultsTable(filtered);
-      }
+      const filtered = filterExamResults(allResults, classFilter ? classFilter.value : '', statusFilter ? statusFilter.value : '');
+      renderAdminExamResultsTable(filtered, allResults.length > 0);
     }
 
     function loadAdminExamResultsTable(isSilent = false) {
@@ -10683,12 +11164,15 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         .getExamResults(AppState.user.username, AppState.token, examId, false);
     }
 
-    function renderExamResultsTableGeneric(results, tbodyId) {
+    function renderExamResultsTableGeneric(results, tbodyId, hasUnfilteredData = false) {
       const tbody = document.getElementById(tbodyId);
       if (!tbody) return;
       tbody.innerHTML = '';
       if (!results || results.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-slate-400 font-medium">Belum ada peserta yang mengikuti ujian ini.</td></tr>`;
+        const emptyMsg = hasUnfilteredData
+          ? 'Tidak ada peserta yang cocok dengan filter kelas/status yang dipilih.'
+          : 'Belum ada peserta yang mengikuti ujian ini.';
+        tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-slate-400 font-medium">${emptyMsg}</td></tr>`;
         return;
       }
 
@@ -10786,12 +11270,12 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       }
     }
 
-    function renderExamResultsTable(results) {
-      renderExamResultsTableGeneric(results, 'results-table-body');
+    function renderExamResultsTable(results, hasUnfilteredData = false) {
+      renderExamResultsTableGeneric(results, 'results-table-body', hasUnfilteredData);
     }
 
-    function renderAdminExamResultsTable(results) {
-      renderExamResultsTableGeneric(results, 'admin-results-table-body');
+    function renderAdminExamResultsTable(results, hasUnfilteredData = false) {
+      renderExamResultsTableGeneric(results, 'admin-results-table-body', hasUnfilteredData);
     }
 
     // ==========================================
@@ -10825,19 +11309,18 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       if (!ok) return;
 
       const btn = document.getElementById(isAdmin ? 'btn-regrade-admin' : 'btn-regrade-guru');
-      const btnHtml = btn ? btn.innerHTML : '';
+      const btnTitle = btn ? btn.title : 'Nilai Ulang';
       const restoreBtn = () => {
         if (!btn) return;
         btn.disabled = false;
-        btn.innerHTML = btnHtml;
-        if (window.lucide && typeof lucide.createIcons === 'function') {
-          try { lucide.createIcons(); } catch (e) {}
-        }
+        setIconButtonLabel(btn, btnTitle || 'Nilai Ulang');
+        setIconButtonIcon(btn, 'calculator');
       };
 
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Menilai...';
+        setIconButtonLabel(btn, 'Menilai...');
+        setIconButtonIcon(btn, 'loader-2', 'w-4 h-4 animate-spin');
         if (window.lucide && typeof lucide.createIcons === 'function') {
           try { lucide.createIcons(); } catch (e) {}
         }
@@ -10881,14 +11364,19 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
 
       const filterClassEl = document.getElementById(isAdminContext ? 'filter-admin-result-class' : 'filter-guru-result-class');
       const activeClassFilter = filterClassEl ? filterClassEl.value.trim() : '';
+      const statusFilterEl = document.getElementById(isAdminContext ? 'filter-admin-result-status' : 'filter-guru-result-status');
+      const activeStatusFilter = statusFilterEl ? statusFilterEl.value.trim().toUpperCase() : '';
+      const statusLabelMap = { SUBMITTED: 'Selesai', MENGERJAKAN: 'Sedang Mengerjakan', TERBLOKIR: 'Terblokir' };
+      const activeStatusLabel = activeStatusFilter ? (statusLabelMap[activeStatusFilter] || activeStatusFilter) : '';
 
       const res = AppState.currentExamResults;
-      let results = (res && res.results) ? res.results.slice() : [];
-      if (activeClassFilter) {
-        results = results.filter(r => (r.kelas || '').trim().toLowerCase() === activeClassFilter.toLowerCase());
-      }
+      let results = filterExamResults((res && res.results) ? res.results : [], activeClassFilter, activeStatusFilter);
       if (!results || results.length === 0) {
-        showToast('Tidak ada data nilai peserta untuk dicetak' + (activeClassFilter ? ` untuk kelas ${activeClassFilter}.` : '.'), 'warning');
+        const filterDesc = [
+          activeClassFilter ? `kelas ${activeClassFilter}` : '',
+          activeStatusLabel ? `status ${activeStatusLabel}` : ''
+        ].filter(Boolean).join(' & ');
+        showToast('Tidak ada data nilai peserta untuk dicetak' + (filterDesc ? ` untuk ${filterDesc}.` : '.'), 'warning');
         return;
       }
 
@@ -10902,6 +11390,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       const isKhusus = examMeta && (examMeta.tipe_peserta || '').toLowerCase() === 'khusus';
       const examKelas = isKhusus ? 'Peserta Khusus' : (activeClassFilter ? `Kelas ${activeClassFilter} (Difilter)` : (examMeta && examMeta.kelas ? examMeta.kelas : 'Semua Kelas'));
       const examSesi = examMeta && examMeta.sesi ? examMeta.sesi : 'Semua Sesi';
+      const examStatusInfo = activeStatusLabel ? `Status ${activeStatusLabel} (Difilter)` : '';
 
       // 1. Kop Sekolah
       const kopSekolahEl = document.getElementById('print-kop-sekolah');
@@ -10942,7 +11431,8 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
 
       const docSesiEl = document.getElementById('print-doc-sesi');
       if (docSesiEl) {
-        docSesiEl.innerHTML = `<strong>Target Sesi:</strong> ${escapeHtml(examSesi || 'Semua Sesi')}`;
+        docSesiEl.innerHTML = `<strong>Target Sesi:</strong> ${escapeHtml(examSesi || 'Semua Sesi')}`
+          + (examStatusInfo ? ` &middot; <strong>${escapeHtml(examStatusInfo)}</strong>` : '');
       }
 
       const now = new Date();
@@ -10963,7 +11453,8 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
           }
           
           const duration = calculateExamDurationMinutes(r.waktu_mulai, r.waktu_submit);
-          const isSubmitted = r.status === 'SUBMITTED';
+          const statusKey = normalizeResultStatus(r.status);
+          const statusPrintLabel = statusKey === 'SUBMITTED' ? 'Selesai' : (statusKey === 'TERBLOKIR' ? 'Terblokir' : 'Pengerjaan');
           const score = Number(r.nilai_akhir || 0);
 
           tr.innerHTML = `
@@ -10974,7 +11465,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
             <td style="border: 1px solid #000; padding: 5px 6px; text-align: center;">${escapeHtml(r.sesi || '-')}</td>
             <td style="border: 1px solid #000; padding: 5px 6px; text-align: center; font-size: 9pt;">${duration}</td>
             <td style="border: 1px solid #000; padding: 5px 4px; text-align: center;">${r.jumlah_pelanggaran || 0}</td>
-            <td style="border: 1px solid #000; padding: 5px 6px; text-align: center; font-size: 8.5pt;">${isSubmitted ? 'Selesai' : 'Pengerjaan'}</td>
+            <td style="border: 1px solid #000; padding: 5px 6px; text-align: center; font-size: 8.5pt;">${statusPrintLabel}</td>
             <td style="border: 1px solid #000; padding: 5px 6px; text-align: center; font-weight: bold; font-size: 10pt;">${score}</td>
           `;
           printTbody.appendChild(tr);

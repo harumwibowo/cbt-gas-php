@@ -76,7 +76,7 @@ const ALLOWED_ACTIONS = [
     'getSettings', 'saveSettings',
     // Admin: pengguna
     'getUsers', 'getStudentExamCards', 'getAdminData', 'saveUser', 'changePassword',
-    'deleteUser', 'getStudentLoginSessions', 'resetStudentLoginSession', 'importUsers',
+    'deleteUser', 'deleteUsersBulk', 'resetUserPassword', 'resetUsersPasswordBulk', 'getStudentLoginSessions', 'resetStudentLoginSession', 'resetStudentLoginSessionsBulk', 'importUsers',
     // Master sesi
     'getSessions', 'saveSession', 'deleteSession',
     // Ujian

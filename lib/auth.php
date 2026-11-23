@@ -217,7 +217,23 @@ function validate_session($username, $token): bool
 function get_session_status($username, $token): array
 {
     try {
-        return ['success' => true, 'valid' => validate_session($username, $token)];
+        $valid = validate_session($username, $token);
+
+        // Dipakai klien untuk memaksa ganti password default sebelum memakai aplikasi.
+        $mustChange = false;
+        if ($valid) {
+            $row = db_one(
+                'SELECT must_change_password FROM users WHERE username = ?',
+                [strtolower(trim(tostr($username)))]
+            );
+            $mustChange = $row ? (int) ($row['must_change_password'] ?? 0) === 1 : false;
+        }
+
+        return [
+            'success'             => true,
+            'valid'               => $valid,
+            'must_change_password' => $mustChange,
+        ];
     } catch (Throwable $e) {
         return ['success' => false, 'valid' => false, 'message' => 'Status sesi tidak dapat diperiksa.'];
     }

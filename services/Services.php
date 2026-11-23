@@ -50,9 +50,13 @@ final class UserService extends BaseService
     public static function getAdminData(...$a) { return self::call('getAdminData', $a); }
     public static function saveUser(...$a) { return self::call('saveUser', $a); }
     public static function deleteUser(...$a) { return self::call('deleteUser', $a); }
+    public static function resetUserPassword(...$a) { return self::call('resetUserPassword', $a); }
+    public static function resetUsersPasswordBulk(...$a) { return self::call('resetUsersPasswordBulk', $a); }
+    public static function deleteUsersBulk(...$a) { return self::call('deleteUsersBulk', $a); }
     public static function importUsers(...$a) { return self::call('importUsers', $a); }
     public static function getStudentLoginSessions(...$a) { return self::call('getStudentLoginSessions', $a); }
     public static function resetStudentLoginSession(...$a) { return self::call('resetStudentLoginSession', $a); }
+    public static function resetStudentLoginSessionsBulk(...$a) { return self::call('resetStudentLoginSessionsBulk', $a); }
 }
 
 final class SessionService extends BaseService
@@ -168,9 +172,13 @@ function service_action_map(): array
         'getadmindata' => [UserService::class, 'getAdminData'],
         'saveuser' => [UserService::class, 'saveUser'],
         'deleteuser' => [UserService::class, 'deleteUser'],
+        'resetuserpassword' => [UserService::class, 'resetUserPassword'],
+        'resetuserspasswordbulk' => [UserService::class, 'resetUsersPasswordBulk'],
+        'deleteusersbulk' => [UserService::class, 'deleteUsersBulk'],
         'importusers' => [UserService::class, 'importUsers'],
         'getstudentloginsessions' => [UserService::class, 'getStudentLoginSessions'],
         'resetstudentloginsession' => [UserService::class, 'resetStudentLoginSession'],
+        'resetstudentloginsessionsbulk' => [UserService::class, 'resetStudentLoginSessionsBulk'],
         // master sesi ujian
         'getsessions' => [SessionService::class, 'getSessions'],
         'savesession' => [SessionService::class, 'saveSession'],

@@ -433,6 +433,144 @@ function changePassword($username, $token, $currentPassword, $newPassword, $conf
     }
 }
 
+/** Reset password seorang pengguna ke default "123456" (khusus Admin). */
+const DEFAULT_RESET_PASSWORD = '123456';
+
+function resetUserPassword($username, $token, $id_user): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa. Silakan login kembali.');
+    }
+
+    try {
+        $callerKey = strtolower(trim(tostr($username)));
+        if (strtolower(trim(current_role(tostr($username)))) !== 'admin') {
+            return err('Hanya Admin yang dapat mereset password pengguna.');
+        }
+
+        $id = trim(tostr($id_user));
+        if ($id === '') {
+            return err('Pengguna yang akan direset tidak ditemukan.');
+        }
+
+        $row = db_one('SELECT * FROM users WHERE id_user = ?', [$id]);
+        if (!$row) {
+            return err('Pengguna tidak ditemukan.');
+        }
+
+        $targetName = tostr($row['username']);
+        if (strtolower(trim($targetName)) === $callerKey) {
+            return err('Gunakan menu Ganti Password untuk mengubah password akun Anda sendiri.');
+        }
+
+        [$hash, $enc] = password_fields(DEFAULT_RESET_PASSWORD);
+        db_exec(
+            'UPDATE users SET password = ?, password_enc = ?, must_change_password = 1 WHERE id_user = ?',
+            [$hash, $enc, $id]
+        );
+
+        // Semua perangkat yang masih login harus masuk ulang dengan password default.
+        session_revoke_all($targetName);
+        db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [$id]);
+
+        $displayName = tostr($row['nama_lengkap']) !== '' ? tostr($row['nama_lengkap']) : $targetName;
+        log_activity(
+            tostr($username),
+            'Reset Password Pengguna',
+            'Password pengguna ' . $targetName . ' (' . $displayName . ') direset ke password default.'
+        );
+
+        return [
+            'success' => true,
+            'default_password' => DEFAULT_RESET_PASSWORD,
+            'message' => 'Password ' . $displayName . ' berhasil direset ke "' . DEFAULT_RESET_PASSWORD
+                . '". Semua sesi loginnya dikeluarkan dan pengguna diminta mengganti password setelah login.',
+        ];
+    } catch (Throwable $e) {
+        return err('Gagal mereset password pengguna: ' . client_error_message($e->getMessage()));
+    }
+}
+
+/** Reset password banyak pengguna sekaligus ke default "123456" (khusus Admin). */
+function resetUsersPasswordBulk($username, $token, $ids): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa. Silakan login kembali.');
+    }
+
+    try {
+        $callerKey = strtolower(trim(tostr($username)));
+        if (strtolower(trim(current_role(tostr($username)))) !== 'admin') {
+            return err('Hanya Admin yang dapat mereset password pengguna.');
+        }
+        if (!is_array($ids) || count($ids) === 0) {
+            return err('Pilih minimal satu pengguna yang akan direset passwordnya.');
+        }
+        if (count($ids) > 500) {
+            return err('Maksimal 500 pengguna dapat direset dalam satu permintaan.');
+        }
+
+        [$hash, $enc] = password_fields(DEFAULT_RESET_PASSWORD);
+        $reset = 0;
+        $skipped = 0;
+        $seen = [];
+
+        foreach ($ids as $rawId) {
+            $id = trim(tostr($rawId));
+            if ($id === '' || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+
+            $row = db_one('SELECT * FROM users WHERE id_user = ?', [$id]);
+            if (!$row) {
+                $skipped++;
+                continue;
+            }
+
+            $targetName = tostr($row['username']);
+            if (strtolower(trim($targetName)) === $callerKey) {
+                $skipped++;
+                continue;
+            }
+
+            db_exec(
+                'UPDATE users SET password = ?, password_enc = ?, must_change_password = 1 WHERE id_user = ?',
+                [$hash, $enc, $id]
+            );
+            session_revoke_all($targetName);
+            db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [$id]);
+            $reset++;
+        }
+
+        if ($reset === 0) {
+            return err('Tidak ada pengguna yang dapat direset dari pilihan tersebut.');
+        }
+
+        log_activity(
+            tostr($username),
+            'Reset Password Massal',
+            'Password ' . $reset . ' pengguna direset ke password default' . ($skipped > 0 ? ' (' . $skipped . ' dilewati)' : '') . '.'
+        );
+
+        $message = 'Password ' . $reset . ' pengguna berhasil direset ke "' . DEFAULT_RESET_PASSWORD
+            . '". Semua sesi login mereka dikeluarkan.';
+        if ($skipped > 0) {
+            $message .= ' ' . $skipped . ' pengguna dilewati (akun Anda sendiri atau tidak ditemukan).';
+        }
+
+        return [
+            'success' => true,
+            'reset_count' => $reset,
+            'skipped_count' => $skipped,
+            'default_password' => DEFAULT_RESET_PASSWORD,
+            'message' => $message,
+        ];
+    } catch (Throwable $e) {
+        return err('Gagal mereset password massal: ' . client_error_message($e->getMessage()));
+    }
+}
+
 /** Hapus pengguna (padanan deleteUser()). */
 function deleteUser($username, $token, $id_user): array
 {
@@ -479,6 +617,106 @@ function deleteUser($username, $token, $id_user): array
             db()->rollBack();
         }
         return err(client_error_message($e->getMessage()));
+    }
+}
+
+/** Hapus banyak pengguna sekaligus (aksi masal dari tabel Data Pengguna). */
+function deleteUsersBulk($username, $token, $ids): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa. Silakan login kembali.');
+    }
+
+    try {
+        if (strtolower(trim(current_role(tostr($username)))) !== 'admin') {
+            return err('Hanya Admin yang dapat menghapus pengguna secara massal.');
+        }
+        if (!is_array($ids) || count($ids) === 0) {
+            return err('Pilih minimal satu pengguna yang akan dihapus.');
+        }
+        if (count($ids) > 500) {
+            return err('Maksimal 500 pengguna dapat dihapus dalam satu permintaan.');
+        }
+
+        $callerKey = strtolower(trim(tostr($username)));
+        $activeAdmins = count_active_admins();
+        $deleted = 0;
+        $deletedAdmins = 0;
+        $skipped = 0;
+        $seen = [];
+
+        foreach ($ids as $rawId) {
+            $id = trim(tostr($rawId));
+            if ($id === '' || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+
+            $row = db_one('SELECT * FROM users WHERE id_user = ?', [$id]);
+            if (!$row) {
+                $skipped++;
+                continue;
+            }
+
+            $targetName = strtolower(trim(tostr($row['username'])));
+            $targetRole = strtolower(trim(tostr($row['role'])));
+            $isActive = strtolower(trim(tostr($row['status_aktif']))) !== 'nonaktif';
+
+            // Lindungi akun super admin, akun yang sedang dipakai, dan admin aktif terakhir.
+            if ($targetName === 'admin' || $targetName === $callerKey) {
+                $skipped++;
+                continue;
+            }
+            if ($targetRole === 'admin' && $isActive && ($activeAdmins - $deletedAdmins) <= 1) {
+                $skipped++;
+                continue;
+            }
+
+            $anonName = 'deleted:' . limit_text(tostr($id), 80);
+            db()->beginTransaction();
+            session_revoke_all(tostr($row['username']));
+            db_exec(
+                'UPDATE results SET username_siswa = ? WHERE username_siswa = ?',
+                [$anonName, $targetName]
+            );
+            db_exec('UPDATE logs SET username = ? WHERE username = ?', [$anonName, $targetName]);
+            db_exec('DELETE FROM users WHERE id_user = ?', [tostr($id)]);
+            db()->commit();
+
+            $deleted++;
+            if ($targetRole === 'admin' && $isActive) {
+                $deletedAdmins++;
+            }
+        }
+
+        current_user_invalidate();
+
+        if ($deleted === 0) {
+            return err('Tidak ada pengguna yang dapat dihapus dari pilihan tersebut.');
+        }
+
+        log_activity(
+            tostr($username),
+            'Delete User Massal',
+            'Menghapus ' . $deleted . ' pengguna terpilih' . ($skipped > 0 ? ' (' . $skipped . ' dilewati)' : '') . '.'
+        );
+
+        $message = $deleted . ' pengguna berhasil dihapus.';
+        if ($skipped > 0) {
+            $message .= ' ' . $skipped . ' pengguna dilewati (akun super admin, akun Anda sendiri, atau admin aktif terakhir).';
+        }
+
+        return [
+            'success' => true,
+            'deleted_count' => $deleted,
+            'skipped_count' => $skipped,
+            'message' => $message,
+        ];
+    } catch (Throwable $e) {
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        return err('Gagal menghapus pengguna massal: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -621,6 +859,93 @@ function resetStudentLoginSession($username, $token, $targetUsername): array
         ];
     } catch (Throwable $e) {
         return err('Gagal mereset sesi login: ' . client_error_message($e->getMessage()));
+    }
+}
+
+/** Reset / keluarkan sesi login banyak siswa sekaligus (aksi masal). */
+function resetStudentLoginSessionsBulk($username, $token, $targetUsernames): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa. Silakan login kembali.');
+    }
+
+    try {
+        $callerRole = strtolower(trim(current_role(tostr($username))));
+        if ($callerRole !== 'admin' && $callerRole !== 'guru') {
+            return err('Hanya Admin atau Guru yang dapat mereset sesi login siswa.');
+        }
+
+        if (!is_array($targetUsernames) || count($targetUsernames) === 0) {
+            return err('Pilih minimal satu siswa yang akan direset.');
+        }
+        if (count($targetUsernames) > 2000) {
+            return err('Maksimal 2000 siswa dapat direset dalam satu permintaan.');
+        }
+
+        $reset = 0;
+        $skippedNoSession = 0;
+        $skippedInvalid = [];
+        $revokedTotal = 0;
+        $seen = [];
+
+        foreach ($targetUsernames as $rawTarget) {
+            $target = strtolower(trim(tostr($rawTarget)));
+            if ($target === '' || isset($seen[$target])) {
+                continue;
+            }
+            $seen[$target] = true;
+
+            $row = db_one('SELECT * FROM users WHERE username = ?', [$target]);
+            if (!$row || strtolower(trim(tostr($row['role']))) !== 'siswa') {
+                $skippedInvalid[] = $target;
+                continue;
+            }
+
+            $activeCount = session_count_active($target);
+            if ($activeCount === 0) {
+                $skippedNoSession++;
+                continue;
+            }
+
+            session_revoke_all($target);
+            db_exec('UPDATE users SET token_session = NULL WHERE id_user = ?', [tostr($row['id_user'])]);
+            $reset++;
+            $revokedTotal += $activeCount;
+        }
+
+        if ($reset === 0) {
+            return [
+                'success' => true,
+                'reset_count' => 0,
+                'revoked_sessions' => 0,
+                'skipped' => $skippedNoSession + count($skippedInvalid),
+                'message' => 'Tidak ada sesi login aktif pada siswa yang dipilih.',
+            ];
+        }
+
+        log_activity(
+            tostr($username),
+            'Reset Login Siswa Massal',
+            'Mengeluarkan ' . $revokedTotal . ' sesi login dari ' . $reset . ' siswa terpilih.'
+        );
+
+        $message = 'Sesi login ' . $reset . ' siswa berhasil direset. ' . $revokedTotal . ' perangkat telah dikeluarkan.';
+        if ($skippedNoSession > 0) {
+            $message .= ' ' . $skippedNoSession . ' siswa dilewati karena tidak memiliki sesi aktif.';
+        }
+        if (count($skippedInvalid) > 0) {
+            $message .= ' ' . count($skippedInvalid) . ' username tidak valid atau bukan siswa.';
+        }
+
+        return [
+            'success' => true,
+            'reset_count' => $reset,
+            'revoked_sessions' => $revokedTotal,
+            'skipped' => $skippedNoSession + count($skippedInvalid),
+            'message' => $message,
+        ];
+    } catch (Throwable $e) {
+        return err('Gagal mereset sesi login massal: ' . client_error_message($e->getMessage()));
     }
 }
 
