@@ -61,10 +61,16 @@ jobs:
           python - <<'PY'
           import os, pathlib, re
           base = os.environ.get('BASE_OVERRIDE', 'http://127.0.0.1:8080/api.php')
+          # Pertahankan akhiran query asli tiap berkas (negative_auth memakai
+          # BASE yang sudah mengandung "?action=").
           for name in ('tests/e2e_test.py', 'tests/negative_auth_test.py'):
               p = pathlib.Path(name)
               s = p.read_text()
-              s = re.sub(r'BASE\s*=\s*"[^"]+"', f'BASE = "{base}"', s, count=1)
+              m = re.search(r'BASE\s*=\s*"([^"]+)"', s)
+              if not m:
+                  continue
+              suffix = '?action=' if 'action=' in m.group(1) else ''
+              s = s[:m.start()] + f'BASE = "{base}{suffix}"' + s[m.end():]
               p.write_text(s)
           PY
           python tests/e2e_test.py

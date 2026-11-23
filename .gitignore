@@ -7,9 +7,10 @@ _tmp/
 # Artefak analisis (hasil ekstraksi sementara)
 _analysis/
 
-# Suite uji pengembangan (tidak diperlukan untuk instalasi; tetap ada di disk
-# dan masih tersimpan pada commit fbcbdcc di riwayat git).
-/tests/
+# Suite uji pengembangan (ikut di-Track agar CI dapat menjalankannya).
+# Artefak Python di dalamnya tidak perlu di-commit.
+__pycache__/
+*.pyc
 
 # Kunci enkripsi lokal (dibuat otomatis) — JANGAN di-commit
 config/pass.key
