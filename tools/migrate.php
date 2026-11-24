@@ -71,8 +71,8 @@ try {
 
         case 'rollback':
             $target = (int) ($argv[2] ?? 0);
-            if ($target < 7 || $target > 11) {
-                fwrite(STDERR, "Rollback tersedia untuk versi 7, 8, 9, 10, dan 11 saja. "
+            if ($target < 7 || $target > 12) {
+                fwrite(STDERR, "Rollback tersedia untuk versi 7, 8, 9, 10, 11, dan 12 saja. "
                     . "Migrasi v1-v6 mengandung logika data PHP di lib/db.php.\n");
                 exit(1);
             }

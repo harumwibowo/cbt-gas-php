@@ -3,7 +3,7 @@
 [![CI](https://github.com/harumwibowo/cbt-gas-php/actions/workflows/ci.yml/badge.svg)](https://github.com/harumwibowo/cbt-gas-php/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/harumwibowo/cbt-gas-php?label=rilis)](https://github.com/harumwibowo/cbt-gas-php/releases)
 
-**Versi rilis:** `2.0.5` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
+**Versi rilis:** `2.0.6` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
 proyek (satu baris, mis. `1.0.3`). Berkas ini ikut tersalin saat pembaruan dari GitHub,
 sehingga label versi di **kartu Pembaruan Aplikasi** dan di **halaman login** otomatis
 berganti. Naikkan isinya setiap kali merilis versi baru.
@@ -527,7 +527,13 @@ halaman di-refresh — pengguna **tidak kembali ke halaman awal**. Status:
 - Submit manual ditolak selama masih ada soal belum dijawab; auto-submit tetap dinilai.
 - Nilai = `round(Σ bobot benar / Σ bobot seluruh soal × 100, 1)`; multi-percobaan
   menyimpan nilai tertinggi dan sisa kesempatan.
-- Buka blokir menyetel pelanggaran ke `batas_global − 1` dan memperbarui `waktu_mulai`.
+- Buka blokir menyetel pelanggaran ke `batas_global − 1` **tanpa** mengubah `waktu_mulai`
+  (batas minimal pengerjaan tidak dihitung ulang dari nol) dan hanya menggeser
+  `deadline_at` sebesar lama blokir (`results.blocked_at`, migrasi v12), dibatasi
+  `exams.waktu_selesai`.
+- Hitung mundur & tombol kirim di browser memakai acuan jam server
+  (`server_epoch` + `min_pengerjaan_sisa` + `deadline_epoch`), bukan jam/zona waktu
+  perangkat siswa, sehingga tombol tidak terbuka sebelum server mengizinkan submit.
 - Satu baris `results` per (ujian, siswa, percobaan) — duplikat dikonsolidasikan otomatis.
 - Kebijakan pelanggaran (`max_violations`, `tindakan_pelanggaran`) bersifat **global**.
 - Kebijakan pelaksanaan ujian juga **global** dan diatur di *Pengaturan › Pelaksanaan Ujian*:
@@ -719,15 +725,15 @@ dipetakan ke HTTP: validasi 422, forbidden 403, not found 404, konflik 409,
 server error 500 — semuanya memakai pesan aman + `X-Request-ID`.
 
 **Skema & migrasi.** `database/schema.sql` adalah **satu-satunya file SQL** dan sudah
-berisi seluruh struktur hingga versi 11 (tabel, kolom, index, setting awal). Instalasi
+berisi seluruh struktur hingga versi 12 (tabel, kolom, index, setting awal). Instalasi
 baru/install ulang langsung berada di versi skema terbaru. Untuk instalasi lama,
 `lib/db.php::db_apply_migrations()` menambahkan struktur yang belum ada secara
-idempoten (v1–v11), lalu menandai versinya di `schema_migrations`.
+idempoten (v1–v12), lalu menandai versinya di `schema_migrations`.
 
 ```bash
 php tools/migrate.php status                 # versi & status semua migrasi
 php tools/migrate.php up                     # backup dulu, lalu samakan skema
-php tools/migrate.php rollback 11            # rollback v11 (kebijakan ujian global)
+php tools/migrate.php rollback 12            # rollback v12 (kolom results.blocked_at)
 php tools/backup.php harian                  # backup manual
 ```
 

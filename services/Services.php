@@ -111,6 +111,7 @@ final class StudentService extends BaseService
     public static function autosaveExam(...$a) { return self::call('autosaveExam', $a); }
     public static function recordViolation(...$a) { return self::call('recordViolation', $a); }
     public static function submitExam(...$a) { return self::call('submitExam', $a); }
+    public static function getExamTiming(...$a) { return self::call('getExamTiming', $a); }
     public static function blockStudentExam(...$a) { return self::call('blockStudentExam', $a); }
     public static function unblockStudentExam(...$a) { return self::call('unblockStudentExam', $a); }
 }
@@ -216,6 +217,7 @@ function service_action_map(): array
         'autosaveexam' => [StudentService::class, 'autosaveExam'],
         'recordviolation' => [StudentService::class, 'recordViolation'],
         'submitexam' => [StudentService::class, 'submitExam'],
+        'getexamtiming' => [StudentService::class, 'getExamTiming'],
         'blockstudentexam' => [StudentService::class, 'blockStudentExam'],
         'unblockstudentexam' => [StudentService::class, 'unblockStudentExam'],
         // monitor ujian

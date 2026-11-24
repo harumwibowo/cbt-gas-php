@@ -422,6 +422,26 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
             . ' | Percobaan ke-' . $attemptNumber . '/' . $maxAttempts
         );
 
+        // Sisa batas minimal pengerjaan dihitung SERVER (detik), bukan di
+        // browser: string waktu_mulai tanpa zona waktu akan ditafsirkan
+        // memakai zona waktu perangkat siswa, sehingga tombol kirim bisa
+        // terbuka lebih awal daripada yang diizinkan server saat submit.
+        // Penting: pakai nilai DATETIME asli dari database (berisi detik),
+        // bukan draft.waktu_mulai yang sudah dipotong ke menit oleh
+        // format_datetime_iso() - pemotongan itu membuat sisa waktu terlalu
+        // kecil sampai 59 detik dan tombol terbuka sebelum waktunya.
+        $workStartRaw = ($isResume && $existingRecord !== null)
+            ? tostr($existingRecord['row']['waktu_mulai'] ?? '')
+            : tostr($draftData['waktu_mulai'] ?? '');
+        $minWorkMinutes = get_exam_min_work();
+        $minWorkRemaining = 0;
+        if ($minWorkMinutes > 0) {
+            $workStartTs = $workStartRaw !== '' ? strtotime($workStartRaw) : false;
+            $workElapsed = $workStartTs === false ? 0 : max(0, $nowTs - $workStartTs);
+            $minWorkRemaining = max(0, ($minWorkMinutes * 60) - $workElapsed);
+        }
+        $deadlineEpoch = strtotime(tostr($draftData['deadline_at'] ?? ''));
+
         return [
             'success'   => true,
             'exam'      => $exam,
@@ -429,9 +449,70 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
             'draft'       => $draftData,
             'server_time' => now_dt(),
             'server_epoch'=> time(),
+            'min_pengerjaan_sisa' => $minWorkRemaining,
+            'deadline_epoch'      => $deadlineEpoch === false ? 0 : $deadlineEpoch,
         ];
     } catch (Throwable $e) {
         return err('Gagal memuat lembar ujian: ' . client_error_message($e->getMessage()));
+    }
+}
+
+/**
+ * Status waktu otoritatif untuk satu sesi ujian siswa.
+ *
+ * Dipakai browser untuk memastikan tombol kirim hanya terbuka setelah server
+ * setuju (bukan berdasarkan jam/zona waktu perangkat) dan untuk memulihkan
+ * hitung mundur bila state klien sudah kedaluwarsa.
+ */
+function getExamTiming($username, $token, $id_ujian, $percobaan_ke = null): array
+{
+    if (!validate_session($username, $token)) {
+        return err('Sesi kedaluwarsa. Silakan login kembali.');
+    }
+
+    $idUjian = trim(tostr($id_ujian));
+    if ($idUjian === '') {
+        return err('ID ujian tidak valid.');
+    }
+
+    try {
+        $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$idUjian]);
+        if (!$examRow) {
+            return err('Ujian tidak ditemukan.');
+        }
+
+        $record = find_result_record($idUjian, tostr($username), $percobaan_ke);
+        if ($record === null) {
+            return err('Sesi ujian tidak ditemukan. Mulai ujian terlebih dahulu.');
+        }
+
+        $row = $record['row'];
+        $status = strtoupper(trim(tostr($row['status'])));
+        $nowTs = time();
+        $minMinutes = get_exam_min_work();
+        $minRemaining = 0;
+        if ($minMinutes > 0 && $status === 'DRAFT') {
+            $startRaw = tostr($row['waktu_mulai'] ?? '');
+            $startTs = $startRaw !== '' ? strtotime($startRaw) : false;
+            $elapsed = $startTs === false ? 0 : max(0, $nowTs - $startTs);
+            $minRemaining = max(0, ($minMinutes * 60) - $elapsed);
+        }
+
+        $deadline = exam_result_deadline($examRow, $row);
+        $deadlineTs = $deadline !== null ? strtotime($deadline) : false;
+
+        return [
+            'success'              => true,
+            'server_time'          => now_dt(),
+            'server_epoch'         => $nowTs,
+            'status'               => $status,
+            'min_pengerjaan_menit' => $minMinutes,
+            'min_pengerjaan_sisa'  => $minRemaining,
+            'deadline_epoch'       => $deadlineTs === false ? 0 : $deadlineTs,
+        ];
+    } catch (Throwable $e) {
+        error_log('[CBT] getExamTiming: ' . $e->getMessage());
+        return err('Gagal membaca status waktu ujian: ' . client_error_message($e->getMessage()));
     }
 }
 
@@ -732,9 +813,17 @@ function submitExam($username, $token, $payload): array
                 $minSeconds = $minPengerjaanMenit * 60;
                 if ($elapsedSeconds < $minSeconds) {
                     $sisaMenit = (int) ceil(($minSeconds - $elapsedSeconds) / 60);
+                    // Sertakan acuan otoritatif supaya klien dapat menyinkronkan
+                    // ulang hitung mundur (mis. halaman lama / jam perangkat meleset).
                     return err(
                         'Minimal pengerjaan ' . $minPengerjaanMenit . ' menit belum terpenuhi. '
-                        . 'Tombol kirim terbuka dalam ' . $sisaMenit . ' menit lagi. Jawaban Anda tetap tersimpan otomatis.'
+                        . 'Tombol kirim terbuka dalam ' . $sisaMenit . ' menit lagi. Jawaban Anda tetap tersimpan otomatis.',
+                        [
+                            'server_epoch'         => time(),
+                            'min_pengerjaan_menit' => $minPengerjaanMenit,
+                            'min_pengerjaan_sisa'  => max(0, $minSeconds - $elapsedSeconds),
+                            'deadline_epoch'       => strtotime(tostr($deadline ?? '')) ?: 0,
+                        ]
                     );
                 }
             }
@@ -888,17 +977,17 @@ function blockStudentExam($username, $token, $payload): array
                 return err('Ujian sudah disubmit sebelumnya.');
             }
             db_exec(
-                'UPDATE results SET jumlah_pelanggaran = ?, status = ?, detail_jawaban = ? WHERE id_hasil = ?',
-                [$violations, 'TERBLOKIR', $answersJson !== '' ? $answersJson : '{}', tostr($existingRecord['row']['id_hasil'])]
+                'UPDATE results SET jumlah_pelanggaran = ?, status = ?, detail_jawaban = ?, blocked_at = COALESCE(blocked_at, ?) WHERE id_hasil = ?',
+                [$violations, 'TERBLOKIR', $answersJson !== '' ? $answersJson : '{}', now_dt(), tostr($existingRecord['row']['id_hasil'])]
             );
         } else {
             db_exec(
                 'INSERT INTO results (id_hasil, id_ujian, username_siswa, waktu_mulai, waktu_submit, jumlah_pelanggaran,
-                    nilai_akhir, status, detail_jawaban, soal_terpilih, percobaan_ke)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                    nilai_akhir, status, detail_jawaban, soal_terpilih, percobaan_ke, blocked_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                 [
                     new_id('RES'), $idUjian, tostr($username), now_dt(), null, $violations, 0, 'TERBLOKIR',
-                    $answersJson !== '' ? $answersJson : '{}', '', normalize_exam_attempts($requestedAttempt),
+                    $answersJson !== '' ? $answersJson : '{}', '', normalize_exam_attempts($requestedAttempt), now_dt(),
                 ]
             );
         }
@@ -908,6 +997,39 @@ function blockStudentExam($username, $token, $payload): array
         error_log('[CBT] blockStudentExam: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
         return err('Gagal memblokir ujian: ' . client_error_message($e->getMessage()));
     }
+}
+
+/**
+ * Deadline hasil ujian setelah blokir dibuka.
+ *
+ * `waktu_mulai` TIDAK direset: batas minimal pengerjaan tetap dihitung dari
+ * awal ujian, sehingga siswa yang sudah memenuhi minimal tidak perlu menunggu
+ * lagi. Waktu selama diblokir dikembalikan dengan menggeser `deadline_at`
+ * sebesar durasi blokir (dibatasi waktu selesai ujian).
+ */
+function exam_deadline_after_unblock(array $examRow, array $resultRow, ?int $nowTs = null): string
+{
+    $nowTs = $nowTs ?? time();
+
+    $storedDeadline = tostr($resultRow['deadline_at'] ?? '');
+    $deadlineTs = $storedDeadline !== '' ? strtotime($storedDeadline) : false;
+    if ($deadlineTs === false) {
+        // Data lama tanpa deadline: hitung dari waktu mulai + durasi.
+        $startRaw = tostr($resultRow['waktu_mulai'] ?? '');
+        $startTs = $startRaw !== '' ? strtotime($startRaw) : false;
+        $deadlineTs = ($startTs === false ? $nowTs : $startTs) + (get_exam_duration() * 60);
+    }
+
+    $blockedRaw = tostr($resultRow['blocked_at'] ?? '');
+    $blockedTs = $blockedRaw !== '' ? strtotime($blockedRaw) : false;
+    $pausedSeconds = $blockedTs === false ? 0 : max(0, $nowTs - $blockedTs);
+
+    $newDeadlineTs = $deadlineTs + $pausedSeconds;
+    $bounds = exam_time_bounds($examRow);
+    if ($bounds['end'] !== null && $newDeadlineTs > $bounds['end']) {
+        $newDeadlineTs = $bounds['end'];
+    }
+    return date('Y-m-d H:i:s', $newDeadlineTs);
 }
 
 /**
@@ -956,16 +1078,21 @@ function unblockStudentExam($username, $token, $id_ujian, $username_siswa): arra
             return err('Data hasil ujian siswa tidak ditemukan.');
         }
 
-        $newDeadline = exam_compute_deadline($examRow, time());
+        $newDeadline = exam_deadline_after_unblock($examRow, $existingRecord['row'], time());
+        // waktu_mulai dibiarkan apa adanya: batas minimal pengerjaan tidak
+        // ikut ter-reset saat blokir dibuka. blocked_at dikosongkan agar
+        // blokir berikutnya mencatat waktu blokir yang baru.
         db_exec(
-            'UPDATE results SET status = ?, jumlah_pelanggaran = ?, waktu_mulai = ?, deadline_at = ? WHERE id_hasil = ?',
-            ['DRAFT', $resetViolations, now_dt(), $newDeadline, tostr($existingRecord['row']['id_hasil'])]
+            'UPDATE results SET status = ?, jumlah_pelanggaran = ?, deadline_at = ?, blocked_at = NULL WHERE id_hasil = ?',
+            ['DRAFT', $resetViolations, $newDeadline, tostr($existingRecord['row']['id_hasil'])]
         );
 
         log_activity(
             tostr($username),
             'Buka Blokir Siswa',
-            'Buka blokir ujian ' . $targetExamId . ' untuk siswa ' . $targetStudent . ' | Pelanggaran diset ke ' . $resetViolations
+            'Buka blokir ujian ' . $targetExamId . ' untuk siswa ' . $targetStudent
+            . ' | Pelanggaran diset ke ' . $resetViolations
+            . ' | Deadline baru ' . dt_display($newDeadline) . ' (waktu mulai dipertahankan)'
         );
 
         return [

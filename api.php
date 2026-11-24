@@ -89,7 +89,7 @@ const ALLOWED_ACTIONS = [
     'getExamResults', 'getExamResultDetail', 'deleteStudentExamResult', 'getStudentViolations', 'regradeExamResults',
     // Alur siswa
     'getStudentAvailableExams', 'getStudentExamReview', 'startStudentExam',
-    'autosaveExam', 'recordViolation', 'submitExam',
+    'autosaveExam', 'recordViolation', 'submitExam', 'getExamTiming',
     'blockStudentExam', 'unblockStudentExam',
     // Monitor ujian (live) & paksa selesai
     'getExamMonitor', 'forceFinishExam',

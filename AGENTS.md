@@ -9,8 +9,8 @@
 
 ## Schema / migrations (most common source of mistakes)
 - Runtime `ensure_schema()` is only a version check (`SELECT MAX(version) FROM schema_migrations`), cached 5 minutes. **Never call `schema_bootstrap()` from a request path**; DDL/seed belongs in `setup.php` and `tools/migrate.php` only.
-- `database/schema.sql` is the **only** SQL file and already contains the full schema up to v9 (fresh installs jump straight to latest). `lib/db.php::db_apply_migrations()` holds idempotent PHP migrations v1–v9 for upgrading old installs and marks `schema_migrations`. When adding a migration: update `schema.sql`, add a guarded PHP block, bump `CBT_SCHEMA_VERSION` in `config/config.php`.
-- Order: `php tools/migrate.php status` → `php tools/migrate.php up` (backs up first) → verify. `rollback 7|8|9` reverses those structure-only migrations; v1–v6 contain data logic and refuse to roll back.
+- `database/schema.sql` is the **only** SQL file and already contains the full schema up to v12 (fresh installs jump straight to latest). `lib/db.php::db_apply_migrations()` holds idempotent PHP migrations v1–v12 for upgrading old installs and marks `schema_migrations`. When adding a migration: update `schema.sql`, add a guarded PHP block, bump `CBT_SCHEMA_VERSION` in `config/config.php`.
+- Order: `php tools/migrate.php status` → `php tools/migrate.php up` (backs up first) → verify. `rollback 7|8|9|10|11|12` reverses those structure-only migrations; v1–v6 contain data logic and refuse to roll back.
 - `tests/` exists on disk but is **gitignored and untracked** even though CI runs it. A fresh checkout has no tests; force-add them if they must ship.
 
 ## Commands (repo root)

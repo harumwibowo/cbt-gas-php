@@ -41,7 +41,7 @@ define('APP_TIMEZONE', 'Asia/Jakarta');
  * yang hanya dipanggil oleh setup.php dan tools/migrate.php.
  * Naikkan nilai ini setiap kali menambah migrasi di lib/db.php.
  */
-define('CBT_SCHEMA_VERSION', 11);
+define('CBT_SCHEMA_VERSION', 12);
 
 /** Batas ukuran berkas gambar yang diunggah (byte). */
 define('MAX_UPLOAD_BYTES', 8 * 1024 * 1024); // 8 MB

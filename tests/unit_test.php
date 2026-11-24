@@ -85,5 +85,44 @@ if (@mkdir($tmpBase, 0700, true)) {
     check('Updater izin folder baru', false);
 }
 
+// --- 10. Buka blokir: deadline digeser, waktu_mulai dipertahankan ---------
+// Kasus: durasi 60 menit, blokir 10 menit setelah mulai, dibuka 10 menit
+// kemudian. Sisa waktu saat diblokir (50 menit) harus dikembalikan utuh.
+$examRow = ['waktu_mulai' => '2026-02-10 08:00:00', 'waktu_selesai' => '2026-02-10 23:00:00'];
+$resultRow = [
+    'waktu_mulai' => '2026-02-10 08:00:00',
+    'deadline_at' => '2026-02-10 09:00:00',
+    'blocked_at'  => '2026-02-10 08:10:00',
+];
+$unblocked = exam_deadline_after_unblock($examRow, $resultRow, strtotime('2026-02-10 08:20:00'));
+check(
+    'Buka blokir menggeser deadline sebesar durasi blokir',
+    $unblocked === '2026-02-10 09:10:00',
+    $unblocked
+);
+
+// Tanpa blocked_at (data lama): deadline tidak digeser.
+check(
+    'Buka blokir tanpa blocked_at: deadline tetap',
+    exam_deadline_after_unblock($examRow, ['deadline_at' => '2026-02-10 09:00:00'], strtotime('2026-02-10 08:20:00')) === '2026-02-10 09:00:00'
+);
+
+// Deadline tidak boleh melewati waktu selesai ujian.
+$clamped = exam_deadline_after_unblock(
+    ['waktu_mulai' => '2026-02-10 08:00:00', 'waktu_selesai' => '2026-02-10 09:05:00'],
+    $resultRow,
+    strtotime('2026-02-10 08:20:00')
+);
+check('Buka blokir dibatasi waktu selesai ujian', $clamped === '2026-02-10 09:05:00', $clamped);
+
+// Batas minimal pengerjaan tetap dihitung dari waktu_mulai asli: setelah
+// blokir dibuka 10 menit, waktu_mulai tidak berubah sehingga sisa minimal 0.
+$elapsedSetelahUnblock = strtotime('2026-02-10 08:20:00') - strtotime($resultRow['waktu_mulai']);
+check(
+    'Min. pengerjaan tidak ter-reset setelah buka blokir',
+    $elapsedSetelahUnblock >= 15 * 60,
+    $elapsedSetelahUnblock . ' detik sejak waktu_mulai asli'
+);
+
 echo "\n=== UNIT: PASS {$passed}  FAIL {$failed} ===\n";
 exit($failed === 0 ? 0 : 1);

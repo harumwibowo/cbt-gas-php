@@ -93,6 +93,7 @@ function rbac_student_actions(): array
         'autosaveexam',
         'recordviolation',
         'submitexam',
+        'getexamtiming',
         'blockstudentexam',
     ];
 }

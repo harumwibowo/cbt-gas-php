@@ -12493,7 +12493,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     async function confirmUnblockStudentExam(examId, username_siswa, studentName) {
       const ok = await showCustomConfirm({
         title: 'Buka Blokir Siswa',
-        message: `Apakah Anda yakin ingin membuka blokir ujian untuk siswa <strong>${escapeHtml(studentName || username_siswa)}</strong> (${escapeHtml(username_siswa)})?<br><br><span class="text-xs text-amber-600 font-semibold">Siswa akan dapat melanjutkan ujian. Catatan: jika siswa melakukan 1 pelanggaran keamanan lagi, siswa akan otomatis kembali terblokir.</span>`,
+        message: `Apakah Anda yakin ingin membuka blokir ujian untuk siswa <strong>${escapeHtml(studentName || username_siswa)}</strong> (${escapeHtml(username_siswa)})?<br><br><span class="text-xs text-amber-600 font-semibold">Siswa akan dapat melanjutkan ujian. Waktu pengerjaan selama diblokir dikembalikan (deadline digeser), dan waktu mulai tidak direset sehingga batas minimal pengerjaan tetap dihitung dari awal ujian. Catatan: jika siswa melakukan 1 pelanggaran keamanan lagi, siswa akan otomatis kembali terblokir.</span>`,
         confirmText: 'Ya, Buka Blokir',
         cancelText: 'Batal',
         type: 'warning'
@@ -13343,6 +13343,11 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
 
       // 3. Setup Timer
       const durationSeconds = (Number(rt.exam.durasi_menit) || 60) * 60;
+      // Jam server dipakai sebagai acuan semua hitungan waktu di klien.
+      const serverEpochMs = Number(data.server_epoch) > 0 ? (Number(data.server_epoch) * 1000) : Date.now();
+      // Selisih jam server vs jam perangkat: dipakai agar hitung mundur tidak
+      // terpengaruh jam perangkat siswa yang meleset.
+      rt.serverSkewMs = serverEpochMs - Date.now();
       let elapsedSeconds = 0;
       if (data.draft && data.draft.waktu_mulai) {
         const startTimestamp = parseDateIsoSafe(data.draft.waktu_mulai);
@@ -13367,6 +13372,16 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         remaining = durationSeconds;
       }
 
+      // Deadline dari server adalah acuan sah (termasuk setelah buka blokir,
+      // saat waktu_mulai di-reset). Tanpa ini, sisa waktu dari LocalStorage
+      // (masa sebelum terblokir) membuat browser auto-submit lebih awal atau
+      // lebih lambat daripada deadline yang dipakai server.
+      const deadlineEpochMs = Number(data.deadline_epoch) > 0 ? (Number(data.deadline_epoch) * 1000) : 0;
+      if (deadlineEpochMs > 0) {
+        const sisaServerDetik = Math.max(0, Math.floor((deadlineEpochMs - serverEpochMs) / 1000));
+        if (sisaServerDetik > 0) remaining = sisaServerDetik;
+      }
+
       rt.remainingSeconds = remaining;
 
       // --- Batas minimal pengerjaan ---------------------------------------
@@ -13378,6 +13393,10 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       const minPengerjaanMenit = Number(rt.exam.min_pengerjaan_menit) || 0;
       rt.minPengerjaanSeconds = minPengerjaanMenit > 0 ? (minPengerjaanMenit * 60) : 0;
       rt.minPengerjaanMenit = minPengerjaanMenit;
+      // Acuan utama = sisa detik dari SERVER, bukan jam perangkat siswa.
+      // Jam perangkat yang meleset (atau zona waktu WIB/WITA/WIT berbeda)
+      // membuat tombol kirim terbuka lebih awal lalu ditolak server.
+      applyExamTiming(data);
       rt.minPengerjaanUnlocked = minPengerjaanRemainingSeconds() <= 0;
 
       startExamTimer();
@@ -13435,11 +13454,41 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
       return Math.max(0, Number(rt.elapsedSeconds) || 0);
     }
 
+    // Terapkan acuan waktu dari server (epoch) ke state runtime. Dipakai saat
+    // mulai/resume ujian, saat hitung mundur habis, dan saat server menolak
+    // submit karena batas minimal pengerjaan belum terpenuhi.
+    function applyExamTiming(data) {
+      const rt = AppState.runtime;
+      if (!rt || !data) return;
+      const serverEpochMs = Number(data.server_epoch) > 0 ? (Number(data.server_epoch) * 1000) : Date.now();
+      rt.serverSkewMs = serverEpochMs - Date.now();
+
+      const minMenit = (data.min_pengerjaan_menit !== undefined && data.min_pengerjaan_menit !== null)
+        ? (Number(data.min_pengerjaan_menit) || 0)
+        : (Number(rt.minPengerjaanMenit) || 0);
+      rt.minPengerjaanMenit = minMenit;
+      rt.minPengerjaanSeconds = minMenit > 0 ? (minMenit * 60) : 0;
+
+      const sisaRaw = data.min_pengerjaan_sisa;
+      const sisa = Number(sisaRaw);
+      if (rt.minPengerjaanSeconds > 0 && sisaRaw !== undefined && sisaRaw !== null && Number.isFinite(sisa)) {
+        rt.minPengerjaanUnlockAtMs = serverEpochMs + (Math.max(0, sisa) * 1000);
+      } else if (rt.minPengerjaanSeconds <= 0) {
+        rt.minPengerjaanUnlockAtMs = 0;
+      }
+    }
+
     function minPengerjaanRemainingSeconds() {
       const rt = AppState.runtime;
       if (!rt) return 0;
       const min = Number(rt.minPengerjaanSeconds) || 0;
       if (min <= 0) return 0;
+      // Utamakan acuan dari server (bebas jam/zona waktu perangkat).
+      const unlockAtMs = Number(rt.minPengerjaanUnlockAtMs) || 0;
+      if (unlockAtMs > 0) {
+        const serverNowMs = Date.now() + (Number(rt.serverSkewMs) || 0);
+        return Math.max(0, Math.ceil((unlockAtMs - serverNowMs) / 1000));
+      }
       return Math.max(0, min - examElapsedSeconds());
     }
 
@@ -13453,7 +13502,7 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
     }
 
     // Dipanggil setiap detik oleh timer: perbarui angka hitung mundur di dalam
-    // tombol kirim, dan buka kunci tepat saat batas minimal tercapai.
+    // tombol kirim, dan minta konfirmasi server tepat saat batas minimal tiba.
     function tickMinPengerjaanCountdown() {
       const rt = AppState.runtime;
       if (!rt || !(Number(rt.minPengerjaanSeconds) > 0)) return;
@@ -13466,11 +13515,41 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
         return;
       }
 
+      // Hitung mundur habis: tombol hanya dibuka setelah server memastikan
+      // batas minimal benar-benar terpenuhi (anti selisih jam/zona perangkat).
       if (!rt.minPengerjaanUnlocked) {
-        rt.minPengerjaanUnlocked = true;
-        updateSubmitExamButtonState();
-        showToast('Batas minimal pengerjaan tercapai. Tombol kirim jawaban sudah terbuka.', 'success');
+        confirmMinPengerjaanUnlock();
       }
+    }
+
+    // Tanya server: apakah batas minimal pengerjaan sudah terpenuhi? Bila belum,
+    // hitung mundur diselaraskan dengan acuan server (self-healing).
+    function confirmMinPengerjaanUnlock() {
+      const rt = AppState.runtime;
+      if (!rt || !rt.exam || rt.minPengerjaanSyncing) return;
+      const now = Date.now();
+      if (rt.minPengerjaanNextSyncAt && now < rt.minPengerjaanNextSyncAt) return;
+      rt.minPengerjaanSyncing = true;
+      rt.minPengerjaanNextSyncAt = now + 5000;
+
+      google.script.run
+        .withSuccessHandler(res => {
+          rt.minPengerjaanSyncing = false;
+          if (!res || res.success !== true) return;
+          applyExamTiming(res);
+          if (minPengerjaanRemainingSeconds() <= 0) {
+            rt.minPengerjaanUnlocked = true;
+            rt.minPengerjaanNextSyncAt = 0;
+            updateSubmitExamButtonState();
+            showToast('Batas minimal pengerjaan tercapai. Tombol kirim jawaban sudah terbuka.', 'success');
+          } else {
+            updateSubmitExamButtonState();
+          }
+        })
+        .withFailureHandler(() => {
+          rt.minPengerjaanSyncing = false;
+        })
+        .getExamTiming(AppState.user.username, AppState.token, rt.exam.id_ujian, rt.percobaanKe || 1);
     }
 
     // TIMER
@@ -14311,6 +14390,14 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
             loadStudentDashboard();
             switchView('siswa');
           } else {
+            // Server menolak (mis. batas minimal pengerjaan belum terpenuhi):
+            // selaraskan state waktu dengan acuan server supaya tombol kirim
+            // tidak lagi aktif sebelum waktunya, lalu hidupkan lagi timer.
+            if (res && (res.min_pengerjaan_sisa !== undefined || res.server_epoch !== undefined)) {
+              applyExamTiming(res);
+              rt.minPengerjaanUnlocked = minPengerjaanRemainingSeconds() <= 0;
+              rt.minPengerjaanNextSyncAt = 0;
+            }
             showCustomAlert({
               title: 'Pengiriman Gagal',
               message: (res && res.message) ? res.message : 'Gagal mengirim jawaban ujian.',
@@ -14318,6 +14405,8 @@ Mulai sekarang, keluarkan HANYA JSON-nya saja tanpa teks lain.`;
             });
             if (!isAutoSubmit) {
               rt.isExamActive = true;
+              updateSubmitExamButtonState();
+              if (!rt.timerInterval) startExamTimer();
               return;
             }
             exitExamFullscreen();

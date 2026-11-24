@@ -95,7 +95,7 @@ function db_last_id(): int
  */
 function schema_target_version(): int
 {
-    return defined('CBT_SCHEMA_VERSION') ? (int) CBT_SCHEMA_VERSION : 11;
+    return defined('CBT_SCHEMA_VERSION') ? (int) CBT_SCHEMA_VERSION : 12;
 }
 
 /**
@@ -527,6 +527,23 @@ function db_apply_migrations(): void
             error_log('[CBT schema] migrasi v11 belum selesai: ' . $e->getMessage());
         }
     }
+
+    // ---- v12: waktu blokir per hasil ujian --------------------------------
+    // Dipakai agar buka blokir tidak mereset waktu_mulai: deadline digeser
+    // sebesar durasi blokir, batas minimal pengerjaan tetap dari awal ujian.
+    if (!db_migration_applied(12)) {
+        try {
+            $cols = array_column(db_all('SHOW COLUMNS FROM `results`'), 'Field');
+            if (!in_array('blocked_at', $cols, true)) {
+                db()->exec('ALTER TABLE results ADD COLUMN `blocked_at` DATETIME NULL
+                    COMMENT \'Waktu auto-blokir pelanggaran (v12) - dipakai untuk menggeser deadline saat blokir dibuka\'
+                    AFTER `deadline_at`');
+            }
+            db_migration_mark(12);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v12 belum selesai: ' . $e->getMessage());
+        }
+    }
 }
 
 /**
@@ -546,12 +563,17 @@ function db_migrations_status(): array
 }
 
 /**
- * Rollback satu versi (hanya struktur v7-v11; v1-v6 mengandung logika data).
+ * Rollback satu versi (hanya struktur v7-v12; v1-v6 mengandung logika data).
  * Selalu gunakan backup di storage/backups/ untuk pemulihan penuh.
  */
 function db_rollback_migration(int $version): void
 {
-    if ($version === 11) {
+    if ($version === 12) {
+        $cols = array_column(db_all('SHOW COLUMNS FROM `results`'), 'Field');
+        if (in_array('blocked_at', $cols, true)) {
+            db()->exec('ALTER TABLE results DROP COLUMN blocked_at');
+        }
+    } elseif ($version === 11) {
         db_exec("DELETE FROM settings WHERE kunci IN ('durasi_ujian','min_pengerjaan_ujian','jumlah_percobaan','tampilkan_pembahasan')");
         cbt_cache_delete('cbt.settings.map');
     } elseif ($version === 10) {
@@ -579,7 +601,7 @@ function db_rollback_migration(int $version): void
             }
         }
     } else {
-        throw new InvalidArgumentException('Rollback hanya tersedia untuk versi 7, 8, 9, 10, dan 11.');
+        throw new InvalidArgumentException('Rollback hanya tersedia untuk versi 7, 8, 9, 10, 11, dan 12.');
     }
     db_exec('DELETE FROM schema_migrations WHERE version = ?', [$version]);
 }

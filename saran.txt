@@ -1,7 +1,7 @@
 ================================================================================
 SARAN OPTIMALISASI PERFORMA, PERBAIKAN BUG, DAN PENGEMBANGAN FITUR
 Aplikasi : CBT GAS - Platform Ujian Online (PHP native + MySQL)
-Versi    : 2.0.5 (berkas VERSION)
+Versi    : 2.0.6 (berkas VERSION)
 Tanggal  : 2026-11-24
 Sifat    : dokumen saran. Seluruh item Bagian 1, Bagian 2, DAN Bagian 3 sudah
            diimplementasikan dan ditandai (SELESAI); dari Bagian 4, item 4.7
@@ -9,8 +9,11 @@ Sifat    : dokumen saran. Seluruh item Bagian 1, Bagian 2, DAN Bagian 3 sudah
 Verifikasi: tests/e2e_test.py -> 62 PASS, 0 FAIL (PHP 8.3, MySQL 8.4).
             uji tambahan optimasi -> 7 PASS, 0 FAIL (pagination getUsers,
             getExamResultDetail, ETag 304, gzip, RBAC, tanpa-DDL saat request).
-            php tools/migrate.php up -> skema versi 11 terpasang.
-            unit 29 PASS, negative-auth 38 PASS, 2FA 7 PASS, 0 FAIL.
+            tests/unblock_keep_start_test.py -> 21 PASS (buka blokir tidak
+            mereset waktu_mulai, deadline digeser, getExamTiming, submit
+            ditolak sampai minimal pengerjaan terpenuhi).
+            php tools/migrate.php up -> skema versi 12 terpasang.
+            unit 33 PASS, negative-auth 40 PASS, 2FA 7 PASS, 0 FAIL.
 Metode   : telaah statis seluruh kode PHP/JS/skema, penelusuran alur RPC, dan
            verifikasi dokumentasi lewat MCP Context7:
            - PHP Manual (/websites/php_net_manual_en)
@@ -623,6 +626,63 @@ Perbaikan:
   - Cek konsistensi timezone: DATETIME disimpan sebagai wall clock; pastikan
     semua input datetime-local dari klien memakai zona aplikasi, bukan zona
     perangkat siswa.
+
+
+1.21 [P1] Buka blokir mereset waktu mulai + tombol kirim terbuka sebelum
+    server mengizinkan submit (SELESAI)
+--------------------------------------------------------------------------------
+Bukti:
+  - modules/student_exam.php:961 unblockStudentExam() menulis
+    `waktu_mulai = now_dt()`, sehingga batas minimal pengerjaan (yang dihitung
+    server dari waktu_mulai) dimulai ulang dari nol setiap kali blokir dibuka.
+  - lib/helpers.php:71 format_datetime_iso() memotong detik ("...T10:00"),
+    dan string tanpa zona waktu ditafsirkan memakai zona waktu PERANGKAT di
+    browser tetapi zona aplikasi di server.
+  - Index.html:13372-13381 & 13438-13442 menghitung sisa minimal dari jam
+    perangkat, bukan dari server.
+
+Dampak:
+  Siswa melihat hitung mundur habis dan tombol kirim aktif, lalu ditolak server
+  dengan "Minimal pengerjaan ... belum terpenuhi" (selisih 0-59 detik akibat
+  pemotongan detik, atau sampai beberapa jam bila jam/zona perangkat meleset).
+  Sebaliknya, sisa waktu dari LocalStorage membuat browser auto-submit lebih
+  awal daripada deadline server setelah buka blokir.
+
+Perbaikan (SELESAI):
+  - Migrasi v12 menambah `results.blocked_at`. blockStudentExam() mengisinya
+    (COALESCE agar blokir pertama yang dipakai).
+  - exam_deadline_after_unblock(): deadline digeser sebesar lama blokir,
+    dibatasi `exams.waktu_selesai`; `waktu_mulai` TIDAK disentuh sehingga
+    batas minimal pengerjaan tetap dihitung dari awal ujian.
+  - startStudentExam() mengirim acuan otoritatif: `min_pengerjaan_sisa` dan
+    `deadline_epoch`; klien memakai server_epoch + selisih jam perangkat
+    (`serverSkewMs`) untuk hitung mundur, jadi tombol tidak pernah terbuka
+    sebelum server mengizinkan submit.
+  - Putaran kedua (temuan saat uji lapangan): `min_pengerjaan_sisa` pada
+    respons resume dihitung dari `draft.waktu_mulai` yang sudah dipotong ke
+    menit, sehingga sisa waktu terlalu kecil sampai 59 detik (tombol tetap
+    terbuka lebih awal). Kini dihitung dari nilai DATETIME mentah di database.
+  - Aksi RPC baru `getExamTiming` (khusus siswa): mengembalikan
+    `server_epoch`, `min_pengerjaan_sisa`, `deadline_epoch`, dan status.
+    Klien memanggilnya tepat saat hitung mundur habis - tombol kirim baru
+    aktif setelah server mengonfirmasi, dan penolakan submit membawa sisa
+    waktu otoritatif sehingga klien menyelaraskan ulang (self-healing) serta
+    menghidupkan kembali timer yang sempat dihentikan.
+  - `index.php`: `Cache-Control` diubah dari `max-age=300` menjadi
+    `no-cache, must-revalidate` (ETag/304 tetap dipakai) agar perbaikan
+    Index.html langsung terpakai setelah rilis dan tidak ada halaman lama
+    yang masih memakai logika hitung mundur versi lama.
+  - tests/unit_test.php: 4 pemeriksaan baru (geser deadline, klausul waktu
+    selesai, data lama tanpa blocked_at, minimal tidak ter-reset).
+  - tests/unblock_keep_start_test.py (baru): 21 PASS end-to-end lewat HTTP
+    (blokir -> buka -> lanjut -> submit ditolak + payload sinkronisasi ->
+    getExamTiming -> minimal lewat -> submit berhasil).
+
+Catatan:
+  Waktu selama diblokir kini ikut dihitung sebagai waktu pengerjaan (konsekuensi
+  mempertahankan waktu_mulai). Bila sekolah ingin hanya "waktu kerja aktif",
+  tambahkan kolom akumulasi (mis. results.blocked_seconds) dan hitung minimal
+  dari `elapsed - blocked_seconds`.
 
 
 2. OPTIMALISASI PERFORMA

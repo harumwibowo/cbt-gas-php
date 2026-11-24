@@ -58,6 +58,9 @@ try {
 
 // ETag/Last-Modified dari mtime Index.html + versi aplikasi + favicon + shim.
 // Klien yang masih menyimpan salinan valid menerima 304 (tanpa HTML 650 KB).
+// Cache-Control sengaja `no-cache, must-revalidate` (bukan max-age) agar
+// perbaikan Index.html langsung dipakai setelah rilis: browser selalu
+// memvalidasi ETag, tetapi tetap hemat bandwidth karena balasan 304.
 $viewMtime = (int) @filemtime($viewFile);
 $shimFile = APP_ROOT . '/assets/js/rpc-shim.js';
 $shimVersion = is_file($shimFile) ? (string) @filemtime($shimFile) : '1';
@@ -72,12 +75,12 @@ if ($notModified) {
     http_response_code(304);
     header('ETag: ' . $etag);
     header('Last-Modified: ' . $lastModified);
-    header('Cache-Control: public, max-age=300, must-revalidate');
+    header('Cache-Control: no-cache, must-revalidate');
     exit;
 }
 header('ETag: ' . $etag);
 header('Last-Modified: ' . $lastModified);
-header('Cache-Control: public, max-age=300, must-revalidate');
+header('Cache-Control: no-cache, must-revalidate');
 
 $faviconTag = '<link rel="icon" type="image/png" href="favicon.php?v=' . $faviconSeed . '" data-app-favicon="1">'
     . '<link rel="apple-touch-icon" href="favicon.php?v=' . $faviconSeed . '" data-app-favicon="1">';

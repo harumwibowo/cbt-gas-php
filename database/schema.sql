@@ -1,10 +1,10 @@
 -- =====================================================================
--- Skema database CBT (MySQL 8) — SATU-SATUNYA file skema (level v11).
+-- Skema database CBT (MySQL 8) — SATU-SATUNYA file skema (level v12).
 -- Dipakai saat instalasi: setup.php / `php tools/migrate.php up`.
--- Berisi seluruh tabel + kolom + index hasil migrasi v1-v11, sehingga
+-- Berisi seluruh tabel + kolom + index hasil migrasi v1-v12, sehingga
 -- instalasi baru langsung berada di versi skema terbaru tanpa berkas
 -- migrasi terpisah. Upgrade dari instalasi lama ditangani oleh
--- lib/db.php::db_apply_migrations() (v1-v11, idempoten).
+-- lib/db.php::db_apply_migrations() (v1-v12, idempoten).
 -- Aman dijalankan berulang (CREATE TABLE IF NOT EXISTS).
 -- =====================================================================
 
@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS `results` (
   `soal_terpilih`      LONGTEXT     NULL,
   `percobaan_ke`       INT          NOT NULL DEFAULT 1,
   `deadline_at`        DATETIME     NULL,
+  `blocked_at`         DATETIME     NULL COMMENT 'Waktu auto-blokir pelanggaran (v12) - dipakai untuk menggeser deadline saat blokir dibuka',
   `idempotency_key`    VARCHAR(64)  NULL,
   PRIMARY KEY (`id_hasil`),
   UNIQUE KEY `uq_result_attempt` (`id_ujian`, `username_siswa`, `percobaan_ke`),
