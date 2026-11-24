@@ -20,6 +20,10 @@ function settings_defaults(): array
         'dynamic_watermark'        => 'Ya',
         'max_violations'           => '3',
         'tindakan_pelanggaran'     => 'auto_submit',
+        'durasi_ujian'             => '60',
+        'min_pengerjaan_ujian'     => '0',
+        'jumlah_percobaan'         => '1',
+        'tampilkan_pembahasan'     => 'Tidak',
         'gemini_api_key'           => '',
         'gemini_model'             => 'gemini-2.0-flash',
         'token_per_siswa'          => 'Tidak',
@@ -154,6 +158,10 @@ function settings_descriptions(): array
         'zona_waktu'               => 'Zona waktu Indonesia untuk seluruh tanggal & jam aplikasi (WIB / WITA / WIT)',
         'max_violations'           => 'Batas maksimal pelanggaran keamanan sebelum tindakan dijalankan (berlaku untuk SEMUA ujian)',
         'tindakan_pelanggaran'     => 'Tindakan saat batas maksimal pelanggaran tercapai (auto_submit / auto_blokir / record_only)',
+        'durasi_ujian'             => 'Durasi pengerjaan ujian dalam menit untuk SEMUA ujian (1-1440)',
+        'min_pengerjaan_ujian'     => 'Batas minimal pengerjaan (menit) sebelum tombol kirim terbuka, berlaku untuk SEMUA ujian. 0 = tanpa batas',
+        'jumlah_percobaan'         => 'Jumlah maksimal percobaan pengerjaan untuk SEMUA ujian (1-99)',
+        'tampilkan_pembahasan'     => 'Tampilkan kunci jawaban & pembahasan ke siswa setelah ujian dikumpulkan (Ya/Tidak) untuk SEMUA ujian',
         'dynamic_watermark'        => 'Tampilkan watermark identitas siswa melayang di area soal (Ya/Tidak)',
         'gemini_api_key'           => 'Google Gemini API Key untuk fitur generate soal AI',
         'gemini_model'             => 'Model Gemini yang digunakan untuk generate konten',
@@ -219,6 +227,20 @@ function save_settings($username, $token, $settingsData): array
                 $val = normalize_violation_action($val);
             }
 
+            // Kebijakan pelaksanaan GLOBAL: durasi, minimal pengerjaan, percobaan, pembahasan.
+            if ($normalizedKey === 'durasi_ujian') {
+                $val = (string) normalize_exam_duration($val);
+            }
+            if ($normalizedKey === 'min_pengerjaan_ujian') {
+                $val = (string) normalize_exam_min_work($val);
+            }
+            if ($normalizedKey === 'jumlah_percobaan') {
+                $val = (string) normalize_exam_attempts($val);
+            }
+            if ($normalizedKey === 'tampilkan_pembahasan') {
+                $val = strtolower(trim($val)) === 'ya' ? 'Ya' : 'Tidak';
+            }
+
             $exists = (int) db_val('SELECT COUNT(*) FROM settings WHERE kunci = ?', [$normalizedKey], 0);
             if ($exists > 0) {
                 db_exec('UPDATE settings SET nilai = ? WHERE kunci = ?', [$val, $normalizedKey]);
@@ -228,9 +250,19 @@ function save_settings($username, $token, $settingsData): array
             }
         }
 
-        // Pastikan pembacaan kebijakan pelanggaran berikutnya memakai nilai baru.
+        // Pastikan pembacaan kebijakan berikutnya memakai nilai baru.
         settings_map(true);
         violation_policy(true);
+
+        // Jaga konsistensi: minimal pengerjaan tidak boleh >= durasi baru.
+        $durasiAkhir = get_exam_duration();
+        $minSebelum = (int) tostr(settings_map()['min_pengerjaan_ujian'] ?? '0');
+        $minAkhir = normalize_exam_min_work($minSebelum, $durasiAkhir);
+        if ($minAkhir !== $minSebelum) {
+            db_exec('UPDATE settings SET nilai = ? WHERE kunci = ?', [(string) $minAkhir, 'min_pengerjaan_ujian']);
+            settings_map(true);
+        }
+        exam_policy(true);
 
         // Terapkan zona waktu baru pada request berikutnya (dan segera untuk sisa request ini).
         apply_app_timezone();
@@ -245,16 +277,25 @@ function save_settings($username, $token, $settingsData): array
 
         $finalSessionLimit = get_max_student_sessions();
 
-        // Ganti logo: berkas media lama dibersihkan bila tidak lagi dirujuk.
-        if (function_exists('media_delete_if_unused')) {
-            $logoBaru = tostr(settings_map()['logo_url'] ?? '');
-            if ($logoBaru !== $logoLama && $logoLama !== '') {
-                media_delete_if_unused($logoLama);
-            }
-        }
+        // Ganti/kosongkan logo: media lama TIDAK dihapus langsung. Media lama
+        // disimpan agar admin masih dapat memulihkan logo sebelumnya (mis. salah
+        // kosongkan). Pembersihan berkas yatim dilakukan terpisah lewat
+        // media_purge_orphans() — `php tools/migrate.php cleanup`.
+        // (Sebelumnya blok ini memanggil media_delete_if_unused() sehingga logo
+        // lama hilang permanen begitu logo_url diganti/dikosongkan.)
         $trimmedSessions = 0;
         if ($sessionLimitUpdated) {
             $trimmedSessions = enforce_student_session_limit($finalSessionLimit);
+        }
+
+        // Ringkas perubahan kebijakan ujian global untuk log aktivitas.
+        $policy = exam_policy();
+        $policySent = false;
+        foreach (['durasi_ujian', 'min_pengerjaan_ujian', 'jumlah_percobaan', 'tampilkan_pembahasan'] as $policyKey) {
+            if (array_key_exists($policyKey, $settingsData)) {
+                $policySent = true;
+                break;
+            }
         }
 
         log_activity(
@@ -264,6 +305,11 @@ function save_settings($username, $token, $settingsData): array
             . ($sessionLimitUpdated
                 ? ' Batas sesi login siswa: ' . $finalSessionLimit . ' perangkat'
                   . ($trimmedSessions > 0 ? ' (' . $trimmedSessions . ' sesi terlama dikeluarkan)' : '') . '.'
+                : '')
+            . ($policySent
+                ? ' Kebijakan ujian global: durasi ' . $policy['durasi'] . ' menit, minimal pengerjaan '
+                  . $policy['min_pengerjaan'] . ' menit, ' . $policy['percobaan'] . ' percobaan, pembahasan '
+                  . ($policy['pembahasan'] ? 'ditampilkan' : 'disembunyikan') . '.'
                 : '')
         );
 
@@ -322,6 +368,72 @@ function violation_policy(bool $refresh = false): array
         'action' => normalize_violation_action($settings['tindakan_pelanggaran'] ?? 'auto_submit'),
     ];
     return $cache;
+}
+
+/**
+ * Kebijakan pelaksanaan ujian GLOBAL (berlaku untuk seluruh ujian).
+ *
+ * Sebelumnya nilai ini tersimpan per-ujian pada kolom `exams.durasi_menit`,
+ * `exams.min_pengerjaan_menit`, `exams.jumlah_percobaan`, dan
+ * `exams.tampilkan_pembahasan`; kini dipusatkan di tabel `settings` agar cukup
+ * diatur sekali oleh Admin pada halaman Pengaturan. Kolom lama dipertahankan
+ * (diisi ulang dengan nilai global saat menyimpan ujian) agar data historis
+ * tetap terbaca.
+ *
+ * @return array{durasi:int, min_pengerjaan:int, percobaan:int, pembahasan:bool}
+ */
+function exam_policy(bool $refresh = false): array
+{
+    static $cache = null;
+    if ($refresh) {
+        $cache = null;
+    }
+    if ($cache !== null) {
+        return $cache;
+    }
+
+    $settings = settings_map();
+    $durasi = normalize_exam_duration($settings['durasi_ujian'] ?? '60');
+    // Minimal pengerjaan tidak boleh melebihi durasi (selisih minimal 1 menit).
+    $min = (int) tostr($settings['min_pengerjaan_ujian'] ?? '0');
+    if ($min < 0) {
+        $min = 0;
+    }
+    if ($min >= $durasi) {
+        $min = max(0, $durasi - 1);
+    }
+
+    $cache = [
+        'durasi'         => $durasi,
+        'min_pengerjaan' => $min,
+        'percobaan'      => normalize_exam_attempts($settings['jumlah_percobaan'] ?? 1),
+        'pembahasan'     => strtolower(trim(tostr($settings['tampilkan_pembahasan'] ?? 'Tidak'))) === 'ya',
+    ];
+    return $cache;
+}
+
+/** Durasi ujian global dalam menit (1..1440). */
+function get_exam_duration(): int
+{
+    return exam_policy()['durasi'];
+}
+
+/** Batas minimal pengerjaan global dalam menit (0 = tanpa batas). */
+function get_exam_min_work(): int
+{
+    return exam_policy()['min_pengerjaan'];
+}
+
+/** Jumlah maksimal percobaan pengerjaan global (1..99). */
+function get_exam_attempt_limit(): int
+{
+    return exam_policy()['percobaan'];
+}
+
+/** Apakah kunci jawaban & pembahasan ditampilkan ke siswa (global). */
+function exam_shows_review(): bool
+{
+    return exam_policy()['pembahasan'];
 }
 
 /** Batas maksimal pelanggaran global (1..99). */

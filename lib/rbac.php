@@ -72,6 +72,8 @@ function rbac_staff_actions(): array
         'getstudentviolations',
         'regradeexamresults',
         'unblockstudentexam',
+        'getexammonitor',
+        'forcefinishexam',
         'setup2fa',
         'confirm2fa',
         'disable2fa',
@@ -189,6 +191,8 @@ function rbac_exam_id_from_args(string $action, array $args): string
         case 'getstudentviolations':
         case 'regradeexamresults':
         case 'unblockstudentexam':
+        case 'getexammonitor':
+        case 'forcefinishexam':
             return $arg2;
         default:
             return '';

@@ -192,6 +192,11 @@ function getExamResults($username, $token, $id_ujian, $includeDetail = true): ar
             if ($bestItem === null) {
                 continue;
             }
+            // Rekap hanya menampilkan siswa yang SUDAH selesai. Siswa yang masih
+            // mengerjakan / terblokir / belum mulai dipantau di halaman Monitor.
+            if (strtoupper(trim(tostr($bestItem['status']))) !== 'SUBMITTED') {
+                continue;
+            }
 
             usort($violationsPerAttempt, static fn ($a, $b) => $a['percobaan_ke'] <=> $b['percobaan_ke']);
 
@@ -226,7 +231,7 @@ function getExamResults($username, $token, $id_ujian, $includeDetail = true): ar
             'peserta_khusus'   => '',
             'kolaborator'      => '',
             'tingkat'          => '',
-            'jumlah_percobaan' => 1,
+            'jumlah_percobaan' => get_exam_attempt_limit(),
         ];
         if ($targetExamId !== '') {
             $examRow = db_one('SELECT * FROM exams WHERE id_ujian = ?', [$targetExamId]);
@@ -238,7 +243,8 @@ function getExamResults($username, $token, $id_ujian, $includeDetail = true): ar
                 $examInfo['peserta_khusus'] = tostr($examRow['peserta_khusus']);
                 $examInfo['kolaborator'] = tostr($examRow['kolaborator']);
                 $examInfo['tingkat'] = tostr($examRow['tingkat']);
-                $examInfo['jumlah_percobaan'] = normalize_exam_attempts($examRow['jumlah_percobaan']);
+                // Jumlah percobaan kini GLOBAL (Pengaturan › Pelaksanaan Ujian).
+                $examInfo['jumlah_percobaan'] = get_exam_attempt_limit();
             }
         }
         foreach ($results as &$rItem) {

@@ -11,6 +11,8 @@ BASE = "http://localhost/cbt-gas-php/"
 ROOT = "C:/laragon87/www/cbt-gas-php"
 CONFIG = os.path.join(ROOT, "config", "database.json")
 BACKUP = os.path.join(ROOT, "_tmp", "database.json.bak")
+INSTALLED = os.path.join(ROOT, "config", "installed.json")
+INSTALLED_BACKUP = os.path.join(ROOT, "_tmp", "installed.json.bak")
 TEST_DB = "cbt_setup_test"
 MYSQL = "C:/laragon87/bin/mysql/mysql-8.4.10-winx64/bin/mysql.exe"
 
@@ -59,6 +61,9 @@ os.makedirs(os.path.dirname(BACKUP), exist_ok=True)
 had_config = os.path.isfile(CONFIG)
 if had_config:
     shutil.copy2(CONFIG, BACKUP)
+had_installed = os.path.isfile(INSTALLED)
+if had_installed:
+    shutil.copy2(INSTALLED, INSTALLED_BACKUP)
 mysql(f"DROP DATABASE IF EXISTS {TEST_DB}")
 
 try:
@@ -164,6 +169,12 @@ finally:
         os.remove(BACKUP)
     elif os.path.isfile(CONFIG):
         os.remove(CONFIG)
+    # metadata instalasi ikut dipulihkan (uji menulis db uji cbt_setup_test)
+    if had_installed:
+        shutil.copy2(INSTALLED_BACKUP, INSTALLED)
+        os.remove(INSTALLED_BACKUP)
+    elif os.path.isfile(INSTALLED):
+        os.remove(INSTALLED)
     mysql(f"DROP DATABASE IF EXISTS {TEST_DB}")
 
 st, _, body = http("index.php")

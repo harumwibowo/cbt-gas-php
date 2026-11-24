@@ -1,10 +1,10 @@
 -- =====================================================================
--- Skema database CBT (MySQL 8) — SATU-SATUNYA file skema (level v9).
+-- Skema database CBT (MySQL 8) — SATU-SATUNYA file skema (level v11).
 -- Dipakai saat instalasi: setup.php / `php tools/migrate.php up`.
--- Berisi seluruh tabel + kolom + index hasil migrasi v1-v9, sehingga
+-- Berisi seluruh tabel + kolom + index hasil migrasi v1-v11, sehingga
 -- instalasi baru langsung berada di versi skema terbaru tanpa berkas
 -- migrasi terpisah. Upgrade dari instalasi lama ditangani oleh
--- lib/db.php::db_apply_migrations() (v1-v9, idempoten).
+-- lib/db.php::db_apply_migrations() (v1-v11, idempoten).
 -- Aman dijalankan berulang (CREATE TABLE IF NOT EXISTS).
 -- =====================================================================
 
@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS `exams` (
   `id_ujian`             VARCHAR(40)  NOT NULL,
   `nama_ujian`           VARCHAR(200) NOT NULL DEFAULT '',
   `durasi_menit`         INT          NOT NULL DEFAULT 60,
+  `min_pengerjaan_menit` INT          NOT NULL DEFAULT 0 COMMENT 'Batas minimal pengerjaan (menit) sebelum tombol kirim terbuka. 0 = tanpa batas',
+
   `waktu_mulai`          DATETIME     NULL,
   `waktu_selesai`        DATETIME     NULL,
   `acak_soal`            VARCHAR(5)   NOT NULL DEFAULT 'Ya',
@@ -224,3 +226,14 @@ CREATE TABLE IF NOT EXISTS `exam_tokens` (
 -- Pengaturan yang ditambahkan oleh migrasi v9 (aman dijalankan ulang).
 INSERT IGNORE INTO `settings` (`kunci`, `nilai`, `keterangan`)
 VALUES ('token_per_siswa', 'Tidak', 'Gunakan token sekali pakai per siswa (Ya/Tidak). Kosong = token ujian global');
+
+-- Kebijakan pelaksanaan ujian GLOBAL (migrasi v11): durasi, minimal
+-- pengerjaan, jumlah percobaan, dan tampil/tidaknya pembahasan. Nilai ini
+-- dulu tersimpan per-ujian di tabel `exams`; kolom lamanya dipertahankan
+-- hanya agar data historis tetap terbaca.
+INSERT IGNORE INTO `settings` (`kunci`, `nilai`, `keterangan`)
+VALUES
+  ('durasi_ujian', '60', 'Durasi pengerjaan ujian dalam menit untuk SEMUA ujian (1-1440)'),
+  ('min_pengerjaan_ujian', '0', 'Batas minimal pengerjaan (menit) sebelum tombol kirim terbuka, berlaku untuk SEMUA ujian. 0 = tanpa batas'),
+  ('jumlah_percobaan', '1', 'Jumlah maksimal percobaan pengerjaan untuk SEMUA ujian (1-99)'),
+  ('tampilkan_pembahasan', 'Tidak', 'Tampilkan kunci jawaban & pembahasan ke siswa setelah ujian dikumpulkan (Ya/Tidak) untuk SEMUA ujian');

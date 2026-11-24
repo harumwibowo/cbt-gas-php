@@ -84,6 +84,11 @@ _, lg = call("login", "admin", "admin123", UA)
 tok = lg.get("token", "")
 check("login admin", lg.get("success") is True)
 
+# Batas minimal pengerjaan bersifat global; uji ini langsung mengumpulkan jawaban,
+# jadi set ke 0 sementara lalu pulihkan di bagian bersih-bersih.
+_orig_settings = call("getSettings", "admin", tok)[1].get("settings", {})
+call("saveSettings", "admin", tok, {"min_pengerjaan_ujian": "0"})
+
 # ---------------------------------------------------------------- default WIB
 g = settings()
 s = g.get("settings", {})
@@ -111,7 +116,7 @@ call("saveSettings", "admin", tok, {"zona_waktu": "Asia/Makassar"})
 check("nama IANA diterima (Asia/Makassar -> WITA)", settings()["settings"].get("zona_waktu") == "WITA")
 
 # ---------------------------------------------------------------- user & ujian
-call("saveUser", "admin", tok, {"username": STUDENT, "nama": "Siswa Zona Waktu", "role": "siswa",
+call("saveUser", "admin", tok, {"username": STUDENT, "nama_lengkap": "Siswa Zona Waktu", "role": "siswa",
                                 "password": SPASS, "kelas": "XII IPA 1", "nisn": "99990002"})
 
 # Ujian dengan jendela waktu di zona WIT (UTC+9). Jika server masih memakai
@@ -146,11 +151,14 @@ _, sl = call("login", STUDENT, SPASS, UA)
 stok = sl.get("token", "")
 check("login siswa", sl.get("success") is True, sl.get("message", ""))
 
+_, qs2 = call("getExamQuestions", "admin", tok, exam_id)
+q_id = ((qs2.get("questions") or [{}])[0]).get("id_soal", "")
 _, st = call("startStudentExam", STUDENT, stok, exam_id, "", "")
 check("ujian berjalan tepat waktu pada zona WIT", st.get("success") is True, st.get("message", ""))
 if st.get("success"):
-    call("autosaveExam", STUDENT, stok, exam_id, "A")
-    _, sub = call("submitExam", STUDENT, stok, exam_id, "manual")
+    call("autosaveExam", STUDENT, stok, {"id_ujian": exam_id, "answers": {q_id: "A"}, "violations": 0})
+    _, sub = call("submitExam", STUDENT, stok, {"id_ujian": exam_id, "answers": {q_id: "A"},
+                                                "violations": 0, "percobaan_ke": 1})
     check("submit tepat waktu", sub.get("success") is True, sub.get("message", ""))
 
 # ---------------------------------------------------------------- konsistensi jam log
@@ -180,6 +188,10 @@ except Exception:
 check("jam PHP kembali mengikuti WIB (UTC+7)", drift7 < 300, f"drift={int(drift7)}s")
 
 # ---------------------------------------------------------------- favicon
+# Logo bisa saja sudah diisi oleh uji lain; kosongkan dulu agar kondisi "tanpa
+# logo" benar-benar teruji, lalu pulihkan nilai aslinya di akhir.
+_orig_logo = settings()["settings"].get("logo_url", "")
+call("saveSettings", "admin", tok, {"logo_url": ""})
 code, hdr, body = head("favicon.php")
 check("favicon tanpa logo -> ikon bawaan SVG",
       code == 200 and "image/svg" in hdr.get("Content-Type", ""), hdr.get("Content-Type", ""))
@@ -214,7 +226,14 @@ check("logo dihapus -> ikon bawaan lagi",
 
 # ---------------------------------------------------------------- bersihkan
 call("deleteExam", "admin", tok, exam_id)
-call("saveSettings", "admin", tok, {"zona_waktu": "WIB"})
+_, _users = call("getUsers", "admin", tok)
+_rec = next((u for u in (_users.get("users") or []) if u.get("username") == STUDENT), None)
+if _rec:
+    call("deleteUser", "admin", tok, _rec.get("id_user"))
+call("saveSettings", "admin", tok,
+     {"zona_waktu": "WIB",
+      "logo_url": _orig_logo if _orig_logo else "",
+      "min_pengerjaan_ujian": str(_orig_settings.get("min_pengerjaan_ujian", "0"))})
 
 print("\n=== RINGKASAN ===")
 print(f"PASS: {len(passed)}   FAIL: {len(failed)}")

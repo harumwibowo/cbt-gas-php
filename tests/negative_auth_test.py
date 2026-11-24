@@ -13,7 +13,7 @@ STAFF_ACTIONS = [
     "importQuestions", "saveBulkQuestions", "getExamTexts", "saveExamText",
     "deleteExamText", "getExamResults", "getExamResultDetail",
     "deleteStudentExamResult", "getStudentViolations", "regradeExamResults",
-    "unblockStudentExam", "getGeminiModels", "testGeminiConnection",
+    "unblockStudentExam", "getExamMonitor", "forceFinishExam", "getGeminiModels", "testGeminiConnection",
     "generateQuestionsWithGemini", "generateStudentTokens", "setup2fa", "disable2fa",
 ]
 

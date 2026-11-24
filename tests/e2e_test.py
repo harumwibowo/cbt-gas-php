@@ -63,9 +63,13 @@ check("getSettings", call("getSettings"), ok,
 
 # ---------------------------------------------------------------- 2. settings
 _original_settings = call("getSettings", "admin", tok)[1].get("settings", {})
+# Kebijakan pelaksanaan ujian (durasi/min/percobaan/pembahasan) bersifat GLOBAL
+# sejak v11, jadi tes ini mengaturnya di sini lalu memulihkannya di akhir.
 check("saveSettings", call("saveSettings", "admin", tok,
                            {"nama_sekolah": "SMK Negeri 1 Uji", "max_student_sessions": "2",
-                            "allowed_student_browsers": "", "wajib_fullscreen": "Ya"}),
+                            "allowed_student_browsers": "", "wajib_fullscreen": "Ya",
+                            "durasi_ujian": "90", "min_pengerjaan_ujian": "0",
+                            "jumlah_percobaan": "2", "tampilkan_pembahasan": "Ya"}),
       ok, lambda r: r.get("message"))
 check("getSettings setelah simpan", call("getSettings"),
       lambda r: r["settings"]["nama_sekolah"] == "SMK Negeri 1 Uji",

@@ -3,7 +3,7 @@
 [![CI](https://github.com/harumwibowo/cbt-gas-php/actions/workflows/ci.yml/badge.svg)](https://github.com/harumwibowo/cbt-gas-php/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/harumwibowo/cbt-gas-php?label=rilis)](https://github.com/harumwibowo/cbt-gas-php/releases)
 
-**Versi rilis:** `2.0.4` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
+**Versi rilis:** `2.0.5` &mdash; nama versi dibaca dari berkas [`VERSION`](VERSION) di root
 proyek (satu baris, mis. `1.0.3`). Berkas ini ikut tersalin saat pembaruan dari GitHub,
 sehingga label versi di **kartu Pembaruan Aplikasi** dan di **halaman login** otomatis
 berganti. Naikkan isinya setiap kali merilis versi baru.
@@ -356,14 +356,13 @@ Login `admin / admin123` → urutan yang disarankan:
   saat login pertama berhasil, password otomatis dinaikkan menjadi hash
   (`upgrade_legacy_password()` di `lib/auth.php`). Migrasi serentak juga tersedia:
   `php tools/migrate-passwords.php`.
-- **Kartu ujian** masih mencetak password siswa. Untuk itu password juga disimpan
-  terenkripsi (AES-256-GCM) di kolom `users.password_enc`, hanya bisa dibuka dengan
-  kunci aplikasi:
-  - `CBT_PASS_KEY` (environment variable, base64 32 byte atau passphrase bebas), **atau**
-  - berkas `config/pass.key` yang dibuat otomatis pada request pertama (sudah
-    di-`.gitignore`, jangan pernah di-commit).
-  - Jika kunci hilang, login tetap berjalan normal (hash tidak terpengaruh); yang hilang
-    hanya tampilan password pada kartu ujian.
+- **Kartu ujian tidak lagi mencetak password.** Password hanya disimpan sebagai hash
+  satu arah sehingga tidak ada salinan yang bisa didekripsi. Kolom `users.password_enc`
+  dipertahankan hanya untuk kompatibilitas skema dan selalu berisi `NULL`.
+  Untuk siswa yang lupa password, gunakan **Reset Password** (password default
+  `123456` + wajib ganti saat login) atau `php tools/migrate-passwords.php --reset`.
+  - `CBT_PASS_KEY` / `config/pass.key` hanya relevan untuk data lama; kunci yang hilang
+    tidak memengaruhi proses login.
   - Pada server Linux, pastikan berkas kunci hanya bisa dibaca web server:
     `chmod 600 config/pass.key && chown www-data config/pass.key`.
 
@@ -443,7 +442,7 @@ cbt-gas-php/
 ├── lib/
 │   ├── db.php                # PDO singleton + ensure_schema() + seed data awal
 │   ├── helpers.php           # Utilitas: id, token, tanggal, log, katalog, normalisasi
-│   ├── crypto.php            # AES-256-GCM untuk password_enc (kartu ujian)
+│   ├── crypto.php            # Utilitas enkripsi (legacy password_enc)
 │   ├── setup.php             # Deteksi instal baru, uji koneksi, simpan kredensial
 │   ├── update.php            # Pembaruan aplikasi dari GitHub (+ rollback)
 │   ├── version.php           # Nama versi rilis dari berkas VERSION
@@ -458,7 +457,9 @@ cbt-gas-php/
 │   ├── sessions.php          # Master data sesi ujian
 │   ├── exams.php             # CRUD ujian + konversi ke objek klien
 │   ├── questions.php         # Bank soal, teks/stimulan, impor, bulk
-│   ├── results.php           # Rekap nilai, pelanggaran, penilaian ulang
+│   ├── results.php           # Rekap nilai (hanya yang selesai), penilaian ulang
+│   ├── monitor.php           # Monitor ujian live: status, progres, buka blokir,
+│   │                         #   paksa selesai (endpoint getExamMonitor/forceFinishExam)
 │   ├── student.php           # Daftar ujian siswa, profil, pembahasan
 │   ├── student_exam.php      # Mulai/autosave/pelanggaran/submit/blokir/buka blokir
 │   ├── media.php             # Simpan/saji/hapus gambar di MySQL (dedupe, pembersihan)
@@ -529,6 +530,14 @@ halaman di-refresh — pengguna **tidak kembali ke halaman awal**. Status:
 - Buka blokir menyetel pelanggaran ke `batas_global − 1` dan memperbarui `waktu_mulai`.
 - Satu baris `results` per (ujian, siswa, percobaan) — duplikat dikonsolidasikan otomatis.
 - Kebijakan pelanggaran (`max_violations`, `tindakan_pelanggaran`) bersifat **global**.
+- Kebijakan pelaksanaan ujian juga **global** dan diatur di *Pengaturan › Pelaksanaan Ujian*:
+  `durasi_ujian`, `min_pengerjaan_ujian`, `jumlah_percobaan`, `tampilkan_pembahasan`.
+  Kolom `exams.durasi_menit`/`min_pengerjaan_menit`/`jumlah_percobaan`/`tampilkan_pembahasan`
+  hanya dipertahankan untuk data historis dan selalu ditimpa nilai global saat menyimpan ujian.
+  Saat migrasi v11, nilai awalnya diambil dari ujian yang sudah ada (durasi & percobaan
+  terbesar, pembahasan `Ya` bila ada ujian yang membukanya) agar tidak ada siswa yang
+  tiba-tiba kehilangan waktu/kesempatan; minimal pengerjaan dimulai dari `0` (tanpa batas,
+  paling longgar).
 
 ---
 
@@ -570,8 +579,8 @@ Buka `index.php` sekali → kembali menjadi: `admin/admin123`, 2 sesi, 14 pengat
 php tools/migrate-passwords.php --reset admin admin123
 ```
 
-Perintah itu menulis hash baru, memperbarui salinan terenkripsi untuk kartu ujian, dan
-mengakhiri semua sesi login akun tersebut. Untuk melihat akun mana yang masih plain text:
+Perintah itu menulis hash baru dan mengakhiri semua sesi login akun tersebut.
+Untuk melihat akun mana yang masih plain text:
 
 ```bash
 php tools/migrate-passwords.php --dry-run
@@ -593,15 +602,16 @@ php tools/migrate-passwords.php --dry-run
 | Favicon tidak berubah | Cache browser. Buka `favicon.php` langsung atau Ctrl+F5. |
 | Jam ujian terasa bergeser | Zona waktu pengaturan ≠ zona sekolah. Ingat: jam ujian adalah **jam dinding** zona terpilih. Ubah zona di luar jam ujian. |
 | Ujian tidak muncul untuk siswa | Cek jadwal mulai/selesai, kelas & sesi sasaran, `tipe_peserta` (khusus = daftar siswa), percobaan habis, atau status TERBLOKIR. |
-| Siswa terblokir | Buka blokir di menu hasil/monitoring ujian (Admin atau Guru pemilik ujian). |
+| Siswa terblokir | Buka blokir di **Monitor** (Admin atau Guru pemilik ujian). Halaman ini memantau semua status peserta (bisa disaring per kelas & status) dan menyegarkan diri tiap 5 detik. |
+| Siswa tidak muncul di Rekap Nilai | Rekap hanya memuat peserta yang **sudah selesai**. Peserta yang masih mengerjakan/belum mulai/terblokir ada di **Monitor**; bila perlu tutup ujiannya dengan tombol **Paksa Selesai**. |
 | `.htaccess` membuat 500 | Hosting melarang `Options`. Hapus blok `<IfModule mod_autoindex.c>Options -Indexes</IfModule>` dari `.htaccess`. |
 
 ---
 
 ## 13. Catatan teknis & batasan
 
-- **Password** disimpan sebagai hash; salinan terenkripsi (`users.password_enc`) hanya
-  dipakai agar kartu ujian tetap bisa mencetak password siswa — lihat
+- **Password** disimpan sebagai hash satu arah; `users.password_enc` selalu `NULL`
+  (legacy skema) sehingga password tidak dapat ditampilkan pada kartu ujian — lihat
   [Penyimpanan password](#penyimpanan-password).
 - **UI**: `Index.html` dipertahankan; satu-satunya perubahan adalah kontrol gambar
   (URL/ID Drive → tombol unggah) pada form butir soal dan logo sekolah.
@@ -609,9 +619,13 @@ php tools/migrate-passwords.php --dry-run
   zona waktu OS/PHP server tidak berpengaruh (`apply_app_timezone()` di setiap request).
   Jangan mengubah zona saat ada ujian berjalan.
 - **Ukuran database**: gambar disimpan di dalam MySQL (maks. 8 MB/berkas, dedupe SHA-256).
-  Bersihkan gambar yatim dengan `media_purge_orphans()` di `modules/media.php` bila perlu.
-- **Autentikasi**: memakai token per sesi (`TKN-…`) yang dikirim di body request, bukan
-  cookie — jadi tidak rentan CSRF berbasis cookie. Perlakukan token seperti kredensial.
+  Mengganti/mengosongkan logo sekolah **tidak** menghapus berkas lama secara langsung,
+  sehingga logo sebelumnya masih dapat dipulihkan. Bersihkan gambar yatim (termasuk logo
+  lama) dengan `media_purge_orphans()` di `modules/media.php` atau
+  `php tools/migrate.php cleanup` bila perlu.
+- **Autentikasi**: sesi memakai cookie `cbt_session` (HttpOnly + SameSite=Lax) yang lebih
+  dipercaya; token di body request tetap didukung untuk kompatibilitas shim. Perlakukan
+  token seperti kredensial.
 - **Autosave**: jawaban dikirim ke database **setiap kali siswa menjawab atau mengubah
   jawaban** (termasuk tanda ragu-ragu), dengan jeda gabung 2,5 detik di browser dan
   pembatasan server maksimal satu tulis/2 detik per (siswa, ujian) bila APCu aktif.
@@ -649,6 +663,8 @@ hanya butuh `SELECT`.
 **Cache.** Pengaturan, versi skema, dashboard admin, dan hasil pengecekan update
 memakai APCu bila tersedia, dengan fallback berkas di `storage/cache/` (sudah diblokir
 `.htaccess`). TTL: pengaturan 60 dtk, dashboard 30 dtk, update check 900 dtk.
+Setiap kunci diberi namespace per database (`DB_HOST:DB_PORT:DB_NAME`) sehingga halaman
+setup yang sementara memakai database uji tidak membocorkan nilainya ke database utama.
 Cache otomatis dibatalkan setelah tulisan terkait. Untuk produksi, aktifkan APCu:
 
 ```ini
@@ -703,15 +719,15 @@ dipetakan ke HTTP: validasi 422, forbidden 403, not found 404, konflik 409,
 server error 500 — semuanya memakai pesan aman + `X-Request-ID`.
 
 **Skema & migrasi.** `database/schema.sql` adalah **satu-satunya file SQL** dan sudah
-berisi seluruh struktur hingga versi 9 (tabel, kolom, index, setting awal). Instalasi
+berisi seluruh struktur hingga versi 11 (tabel, kolom, index, setting awal). Instalasi
 baru/install ulang langsung berada di versi skema terbaru. Untuk instalasi lama,
 `lib/db.php::db_apply_migrations()` menambahkan struktur yang belum ada secara
-idempoten (v1–v9), lalu menandai versinya di `schema_migrations`.
+idempoten (v1–v11), lalu menandai versinya di `schema_migrations`.
 
 ```bash
 php tools/migrate.php status                 # versi & status semua migrasi
 php tools/migrate.php up                     # backup dulu, lalu samakan skema
-php tools/migrate.php rollback 9             # rollback struktur v9 (backup dulu)
+php tools/migrate.php rollback 11            # rollback v11 (kebijakan ujian global)
 php tools/backup.php harian                  # backup manual
 ```
 

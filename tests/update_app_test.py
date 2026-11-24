@@ -83,13 +83,34 @@ def md5(path):
     return hashlib.md5(open(path, "rb").read()).hexdigest()
 
 
+# Versi terpasang disimpan di tabel settings (dipakai bersama oleh salinan uji),
+# jadi harus dikembalikan seperti semula agar instalasi asli tidak berubah.
+APP_VER_KEY = "app_version:harumwibowo/cbt-gas-php"
+
+
+def setting_read(key):
+    return subprocess.run(
+        ["php", "-r", 'require "config/config.php"; echo db_val("SELECT nilai FROM settings WHERE kunci = ?", [getenv("KEY")], "");'],
+        cwd=ROOT, capture_output=True, text=True, env=dict(os.environ, KEY=key)).stdout.strip()
+
+
+def setting_write(key, value):
+    code = ('require "config/config.php"; $k = getenv("KEY"); $v = getenv("VAL");'
+            ' $e = (int) db_val("SELECT COUNT(*) FROM settings WHERE kunci = ?", [$k], 0);'
+            ' if ($e > 0) { db_exec("UPDATE settings SET nilai = ? WHERE kunci = ?", [$v, $k]); }'
+            ' else { db_exec("INSERT INTO settings (kunci, nilai, keterangan) VALUES (?,?,?)", [$k, $v, "Pembaruan aplikasi"]); }'
+            ' settings_map(true);')
+    subprocess.run(["php", "-r", code], cwd=ROOT, capture_output=True, text=True,
+                   env=dict(os.environ, KEY=key, VAL=value))
+
+
 # ------------------------------------------------------------------ login HTTP
 lg = rpc("login", "admin", "admin123", "Mozilla/5.0 Chrome/120")
 admin_token = lg.get("token", "")
 check("login admin untuk uji pembaruan", lg.get("success") is True)
 
 _, _ = None, None
-sess = rpc("saveUser", "admin", admin_token, {"username": "siswaupd", "nama": "Siswa Update", "role": "siswa",
+sess = rpc("saveUser", "admin", admin_token, {"username": "siswaupd", "nama_lengkap": "Siswa Update", "role": "siswa",
                                               "password": "siswa123", "kelas": "XII", "nisn": "99990004"})
 sl = rpc("login", "siswaupd", "siswa123", "Mozilla/5.0 Chrome/120")
 student_token = sl.get("token", "")
@@ -103,18 +124,23 @@ check("repositori privat terdeteksi butuh token",
 check("info versi menyertakan tautan repo", "github.com/harumwibowo/cbt-gas-php" in str(ver.get("repo")))
 
 den = rpc("getApplicationVersion", "siswaupd", student_token)
-check("siswa tidak boleh membaca versi aplikasi", den.get("success") is False, str(den.get("message"))[:40])
+check("siswa tidak boleh membaca versi aplikasi", den.get("success") is not True, str(den.get("error") or den.get("message"))[:40])
 
 den = rpc("updateApplication", "siswaupd", student_token, False)
-check("siswa tidak boleh menjalankan pembaruan", den.get("success") is False, str(den.get("message"))[:40])
+check("siswa tidak boleh menjalankan pembaruan", den.get("success") is not True, str(den.get("error") or den.get("message"))[:40])
 
 tok_bad = rpc("setUpdateToken", "admin", admin_token, "pendek")
-check("token terlalu pendek ditolak", tok_bad.get("success") is False, str(tok_bad.get("message"))[:45])
+check("token terlalu pendek ditolak", tok_bad.get("success") is not True, str(tok_bad.get("error") or tok_bad.get("message"))[:45])
 
 tok_den = rpc("setUpdateToken", "siswaupd", student_token, "ghp_abcdefghijklmnopqrstuvwxyz0123")
-check("siswa tidak boleh mengubah token", tok_den.get("success") is False, str(tok_den.get("message"))[:40])
+check("siswa tidak boleh mengubah token", tok_den.get("success") is not True, str(tok_den.get("error") or tok_den.get("message"))[:40])
 
 # ------------------------------------------------- 2. mesin pembaruan (salinan)
+# Paksa kondisi "versi lama" agar pembaruan benar-benar menyalin berkas (bukan
+# langsung melaporkan sudah terbaru karena penanda versi lama masih tersimpan).
+_orig_app_version = setting_read(APP_VER_KEY)
+setting_write(APP_VER_KEY, "0" * 40)
+
 try:
     if os.path.isdir(COPY):
         shutil.rmtree(COPY)
@@ -183,6 +209,8 @@ if uid:
 CLEAN_SQL = "DELETE FROM settings WHERE kunci LIKE '%:demo/cbt'"
 subprocess.run(["php", "-r", 'require "config/config.php"; db_exec(' + json.dumps(CLEAN_SQL) + ');'],
                cwd=ROOT, capture_output=True, text=True)
+# Kembalikan penanda versi terpasang seperti semula.
+setting_write(APP_VER_KEY, _orig_app_version)
 
 check("direktori uji dibersihkan", not os.path.isdir(COPY))
 

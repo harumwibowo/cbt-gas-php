@@ -115,6 +115,12 @@ final class StudentService extends BaseService
     public static function unblockStudentExam(...$a) { return self::call('unblockStudentExam', $a); }
 }
 
+final class MonitorService extends BaseService
+{
+    public static function getExamMonitor(...$a) { return self::call('getExamMonitor', $a); }
+    public static function forceFinishExam(...$a) { return self::call('forceFinishExam', $a); }
+}
+
 final class AIService extends BaseService
 {
     public static function getGeminiModels(...$a) { return self::call('getGeminiModels', $a); }
@@ -212,6 +218,9 @@ function service_action_map(): array
         'submitexam' => [StudentService::class, 'submitExam'],
         'blockstudentexam' => [StudentService::class, 'blockStudentExam'],
         'unblockstudentexam' => [StudentService::class, 'unblockStudentExam'],
+        // monitor ujian
+        'getexammonitor' => [MonitorService::class, 'getExamMonitor'],
+        'forcefinishexam' => [MonitorService::class, 'forceFinishExam'],
         // AI
         'getgeminimodels' => [AIService::class, 'getGeminiModels'],
         'testgeminiconnection' => [AIService::class, 'testGeminiConnection'],

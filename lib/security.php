@@ -190,6 +190,12 @@ function safe_media_url($value): string
     if (preg_match('#^\s*(javascript|vbscript|data)\s*:#i', $url)) {
         return '';
     }
+    // URL internal hasil upload.php berbentuk `media.php?id=MED-XXXXXXXX`
+    // (opsional dengan parameter tambahan seperti `&download=1`). Tanpa cabang
+    // ini, gambar yang baru diunggah akan dibuang saat soal disimpan.
+    if (preg_match('#^media\.php(?:\?[A-Za-z0-9_.~%=&+\-]*)?$#i', $url)) {
+        return limit_text($url, 1000);
+    }
     if (str_starts_with($url, 'media/') || str_starts_with($url, 'uploads/')
         || str_starts_with($url, '/') || preg_match('#^https?://#i', $url)) {
         return limit_text($url, 1000);

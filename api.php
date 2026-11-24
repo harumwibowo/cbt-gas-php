@@ -41,6 +41,7 @@ require_once APP_ROOT . '/modules/questions.php';
 require_once APP_ROOT . '/modules/results.php';
 require_once APP_ROOT . '/modules/student.php';
 require_once APP_ROOT . '/modules/student_exam.php';
+require_once APP_ROOT . '/modules/monitor.php';
 require_once APP_ROOT . '/modules/gemini.php';
 require_once APP_ROOT . '/lib/update.php';
 require_once APP_ROOT . '/lib/rbac.php';
@@ -90,6 +91,8 @@ const ALLOWED_ACTIONS = [
     'getStudentAvailableExams', 'getStudentExamReview', 'startStudentExam',
     'autosaveExam', 'recordViolation', 'submitExam',
     'blockStudentExam', 'unblockStudentExam',
+    // Monitor ujian (live) & paksa selesai
+    'getExamMonitor', 'forceFinishExam',
     // AI (Gemini)
     'getGeminiModels', 'testGeminiConnection', 'generateQuestionsWithGemini',
     // Pemeliharaan aplikasi

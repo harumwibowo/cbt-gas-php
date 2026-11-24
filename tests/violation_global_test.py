@@ -68,7 +68,7 @@ check("tindakan tidak valid dinormalkan (xyz -> auto_submit)", s.get("tindakan_p
 call("saveSettings", "admin", tok, {"max_violations": 5, "tindakan_pelanggaran": "auto_blokir"})
 
 # ---------------------------------------------------------------- user & ujian
-call("saveUser", "admin", tok, {"username": STUDENT, "nama": "Siswa Violasi", "role": "siswa",
+call("saveUser", "admin", tok, {"username": STUDENT, "nama_lengkap": "Siswa Violasi", "role": "siswa",
                                 "password": SPASS, "kelas": "XII IPA 1", "nisn": "99990001"})
 
 _, exam = call("saveExam", "admin", tok, {
@@ -119,10 +119,12 @@ check("objek ujian runtime memakai tindakan global", ex.get("tindakan_pelanggara
       f"nilai={ex.get('tindakan_pelanggaran')}")
 
 # ---------------------------------------------------------------- blokir & buka blokir
-_, rv = call("recordViolation", STUDENT, stok, exam_id)
+_, rv = call("recordViolation", STUDENT, stok, {"id_ujian": exam_id, "jenis": "Tab Switch",
+                                                  "keterangan": "Uji pelanggaran global"})
 check("catat pelanggaran", rv.get("success") is True, rv.get("message", ""))
 
-_, bl = call("blockStudentExam", STUDENT, stok, exam_id)
+_, bl = call("blockStudentExam", STUDENT, stok, {"id_ujian": exam_id, "violations": 5,
+                                                 "answers": {}, "percobaan_ke": 1})
 check("blokir ujian siswa", bl.get("success") is True, bl.get("message", ""))
 
 _, ub = call("unblockStudentExam", "admin", tok, exam_id, STUDENT)
@@ -134,7 +136,8 @@ check("buka blokir menyisakan (batas global - 1) = 4 pelanggaran", int(vr.get("t
 
 # ---------------------------------------------------------------- ubah batas -> unblock ikut berubah
 call("saveSettings", "admin", tok, {"max_violations": 2})
-call("blockStudentExam", STUDENT, stok, exam_id)
+call("blockStudentExam", STUDENT, stok, {"id_ujian": exam_id, "violations": 2,
+                                         "answers": {}, "percobaan_ke": 1})
 _, ub2 = call("unblockStudentExam", "admin", tok, exam_id, STUDENT)
 _, vr2 = call("getStudentViolations", "admin", tok, exam_id, STUDENT)
 check("batas global baru (2) dipakai saat buka blokir -> 1", int(vr2.get("totalRecorded") or -1) == 1,
@@ -151,11 +154,16 @@ check("ujian mengikuti mode record_only global", e1.get("tindakan_pelanggaran") 
 
 # ---------------------------------------------------------------- siswa tidak boleh ubah
 _, deny = call("saveSettings", STUDENT, stok, {"max_violations": 99})
-check("siswa tidak boleh mengubah pengaturan", deny.get("success") is False, deny.get("message", ""))
+check("siswa tidak boleh mengubah pengaturan", deny.get("success") is not True,
+      deny.get("error") or deny.get("message", ""))
 
 # ---------------------------------------------------------------- bersihkan
 call("saveSettings", "admin", tok, {"max_violations": 3, "tindakan_pelanggaran": "auto_submit"})
 call("deleteExam", "admin", tok, exam_id)
+_, _usr = call("getUsers", "admin", tok)
+_rec = next((u for u in (_usr.get("users") or []) if u.get("username") == STUDENT), None)
+if _rec:
+    call("deleteUser", "admin", tok, _rec.get("id_user"))
 check("kembalikan nilai default", str(settings().get("max_violations")) == "3")
 
 print("\n=== RINGKASAN ===")

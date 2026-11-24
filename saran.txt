@@ -1,16 +1,16 @@
 ================================================================================
 SARAN OPTIMALISASI PERFORMA, PERBAIKAN BUG, DAN PENGEMBANGAN FITUR
 Aplikasi : CBT GAS - Platform Ujian Online (PHP native + MySQL)
-Versi    : 2.0.4 (berkas VERSION)
-Tanggal  : 2026-11-23
+Versi    : 2.0.5 (berkas VERSION)
+Tanggal  : 2026-11-24
 Sifat    : dokumen saran. Seluruh item Bagian 1, Bagian 2, DAN Bagian 3 sudah
            diimplementasikan dan ditandai (SELESAI); dari Bagian 4, item 4.7
            (UX/UI) juga sudah dikerjakan. Item lain tetap saran/roadmap.
 Verifikasi: tests/e2e_test.py -> 62 PASS, 0 FAIL (PHP 8.3, MySQL 8.4).
             uji tambahan optimasi -> 7 PASS, 0 FAIL (pagination getUsers,
             getExamResultDetail, ETag 304, gzip, RBAC, tanpa-DDL saat request).
-            php tools/migrate.php up -> skema versi 9 terpasang.
-            unit 28 PASS, negative-auth 38 PASS, 2FA 7 PASS, 0 FAIL.
+            php tools/migrate.php up -> skema versi 11 terpasang.
+            unit 29 PASS, negative-auth 38 PASS, 2FA 7 PASS, 0 FAIL.
 Metode   : telaah statis seluruh kode PHP/JS/skema, penelusuran alur RPC, dan
            verifikasi dokumentasi lewat MCP Context7:
            - PHP Manual (/websites/php_net_manual_en)

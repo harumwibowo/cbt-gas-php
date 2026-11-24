@@ -198,7 +198,7 @@ function getStudentAvailableExams($username, $token): array
             $startTs = dt_ts($examRow['waktu_mulai']);
             $endTs = dt_ts($examRow['waktu_selesai']);
 
-            $attemptLimit = normalize_exam_attempts($examRow['jumlah_percobaan']);
+            $attemptLimit = get_exam_attempt_limit();
             $attemptSummary = summarize_student_attempts($studentAttempts[$examId] ?? [], $attemptLimit);
             $attemptRows = $attemptSummary['rows'];
             $latestAttempt = count($attemptRows) > 0 ? $attemptRows[count($attemptRows) - 1] : null;
@@ -272,7 +272,8 @@ function getStudentAvailableExams($username, $token): array
             $item = [
                 'id_ujian'             => $examId,
                 'nama_ujian'           => sanitize_plain_text($examRow['nama_ujian']),
-                'durasi_menit'         => (int) $examRow['durasi_menit'] > 0 ? (int) $examRow['durasi_menit'] : 60,
+                'durasi_menit'         => get_exam_duration(),
+                'min_pengerjaan_menit' => get_exam_min_work(),
                 'waktu_mulai'          => $rawMulai,
                 'waktu_selesai'        => $rawSelesai,
                 'acak_soal'            => tostr($examRow['acak_soal']) !== '' ? tostr($examRow['acak_soal']) : 'Ya',
@@ -289,7 +290,7 @@ function getStudentAvailableExams($username, $token): array
                 'percobaan_dilakukan'  => $attemptSummary['attempts_used'],
                 'sisa_percobaan'       => $attemptSummary['attempts_left'],
                 'nilai_tertinggi'      => $attemptSummary['best'] ? (float) $attemptSummary['best']['score'] : 0,
-                'tampilkan_pembahasan' => strtolower(trim(tostr($examRow['tampilkan_pembahasan']))) === 'ya' ? 'Ya' : 'Tidak',
+                'tampilkan_pembahasan' => exam_shows_review() ? 'Ya' : 'Tidak',
                 'max_violations'       => violation_policy()['max'],
                 'tindakan_pelanggaran' => violation_policy()['action'],
                 'student_result'       => $myResult,
@@ -343,10 +344,10 @@ function getStudentExamReview($username, $token, $id_ujian): array
         $examInfo = [
             'id_ujian'             => $targetExamId,
             'nama_ujian'           => sanitize_plain_text($examRow['nama_ujian']),
-            'tampilkan_pembahasan' => strtolower(trim(tostr($examRow['tampilkan_pembahasan']))) === 'ya' ? 'Ya' : 'Tidak',
+            'tampilkan_pembahasan' => exam_shows_review() ? 'Ya' : 'Tidak',
         ];
         if ($examInfo['tampilkan_pembahasan'] !== 'Ya') {
-            return err('Kunci jawaban & pembahasan untuk ujian ini tidak dibuka oleh guru pengampu.');
+            return err('Kunci jawaban & pembahasan sedang tidak dibuka oleh Admin (Pengaturan › Pelaksanaan Ujian).');
         }
 
         // Hasil siswa: pakai percobaan dengan nilai tertinggi

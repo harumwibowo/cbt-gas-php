@@ -9,6 +9,36 @@
  */
 declare(strict_types=1);
 
+/**
+ * Namespace cache per database.
+ *
+ * Beberapa proses dalam satu instalasi dapat berganti database (halaman setup
+ * memakai DB uji, lalu kembali ke DB utama). Tanpa pemisahan ini, nilai cache
+ * milik database lain — mis. peta pengaturan berisi nilai bawaan — ikut
+ * terbaca dan bahkan bisa tertulis kembali ke database yang benar.
+ */
+function cbt_cache_namespace(): string
+{
+    static $ns = null;
+    if ($ns !== null) {
+        return $ns;
+    }
+    $host = defined('DB_HOST') ? (string) DB_HOST : '';
+    $port = defined('DB_PORT') ? (string) DB_PORT : '';
+    $name = defined('DB_NAME') ? (string) DB_NAME : '';
+    $ns = ($host === '' && $name === '')
+        ? ''
+        : substr(sha1($host . '|' . $port . '|' . $name), 0, 10);
+    return $ns;
+}
+
+/** Kunci final untuk penyimpanan lintas-request (APCu & berkas). */
+function cbt_cache_key(string $key): string
+{
+    $ns = cbt_cache_namespace();
+    return $ns === '' ? $key : $ns . ':' . $key;
+}
+
 /** Simpan nilai cache di proses (ditambah APCu/file bila tersedia). */
 function cbt_cache_get(string $key)
 {
@@ -21,7 +51,7 @@ function cbt_cache_get(string $key)
 
     if (cbt_cache_apcu_ready()) {
         $ok = false;
-        $value = apcu_fetch($key, $ok);
+        $value = apcu_fetch(cbt_cache_key($key), $ok);
         if ($ok) {
             $GLOBALS['CBT_CACHE_LOCAL'][$key] = $value;
             return $value;
@@ -54,7 +84,7 @@ function cbt_cache_set(string $key, $value, int $ttl = 60): void
     $GLOBALS['CBT_CACHE_LOCAL'][$key] = $value;
 
     if (cbt_cache_apcu_ready()) {
-        @apcu_store($key, $value, max(0, $ttl));
+        @apcu_store(cbt_cache_key($key), $value, max(0, $ttl));
     }
 
     $file = cbt_cache_file($key);
@@ -84,7 +114,7 @@ function cbt_cache_delete(string $key): void
         unset($GLOBALS['CBT_CACHE_LOCAL'][$key]);
     }
     if (cbt_cache_apcu_ready()) {
-        @apcu_delete($key);
+        @apcu_delete(cbt_cache_key($key));
     }
     $file = cbt_cache_file($key);
     if (is_file($file)) {
@@ -118,8 +148,8 @@ function cbt_cache_apcu_ready(): bool
         && (PHP_SAPI !== 'cli' || (bool) ini_get('apc.enable_cli'));
 }
 
-/** Path berkas cache untuk sebuah kunci. */
+/** Path berkas cache untuk sebuah kunci (dibedakan per database). */
 function cbt_cache_file(string $key): string
 {
-    return APP_ROOT . '/storage/cache/' . substr(sha1('cbt:' . $key), 0, 32) . '.json';
+    return APP_ROOT . '/storage/cache/' . substr(sha1('cbt:' . cbt_cache_key($key)), 0, 32) . '.json';
 }

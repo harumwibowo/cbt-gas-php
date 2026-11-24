@@ -61,7 +61,7 @@ _, bad = call("login", "admin", "admin12", UA)
 check("password salah ditolak", bad.get("success") is False, bad.get("message", ""))
 
 # ---------------------------------------------------------------- user baru
-call("saveUser", "admin", tok, {"username": STUDENT, "nama": "Siswa Hash", "role": "siswa",
+call("saveUser", "admin", tok, {"username": STUDENT, "nama_lengkap": "Siswa Hash", "role": "siswa",
                                 "password": SPASS, "kelas": "XII IPA 1", "nisn": "99990003"})
 spw = db_password(STUDENT)
 check("password user baru berupa hash", is_hash(spw), spw[:18] + "...")
@@ -73,13 +73,13 @@ check("user baru bisa login", sl.get("success") is True, sl.get("message", ""))
 # ---------------------------------------------------------------- kartu ujian
 _, cards = call("getStudentExamCards", "admin", tok)
 mine = [c for c in (cards.get("students") or []) if c.get("username") == STUDENT]
-check("kartu ujian menampilkan password asli (didekripsi)",
-      bool(mine) and mine[0].get("password") == SPASS,
-      f"nilai={(mine[0].get('password') if mine else '-')}")
+check("kartu ujian tidak membocorkan password",
+      bool(mine) and mine[0].get("password") == "" and mine[0].get("password_available") is False,
+      f"password_available={(mine[0].get('password_available') if mine else '-')}")
 
 # ---------------------------------------------------------------- update user tanpa ganti password
 call("saveUser", "admin", tok, {"id_user": php(f'echo db_val("SELECT id_user FROM users WHERE username = \'{STUDENT}\'");'),
-                                "username": STUDENT, "nama": "Siswa Hash Diubah", "role": "siswa",
+                                "username": STUDENT, "nama_lengkap": "Siswa Hash Diubah", "role": "siswa",
                                 "password": "", "kelas": "XII IPA 2", "nisn": "99990003"})
 spw2 = db_password(STUDENT)
 check("password tidak berubah saat form dikosongkan", spw2 == spw)

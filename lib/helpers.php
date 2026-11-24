@@ -352,6 +352,32 @@ function normalize_violation_action($value): string
     return 'auto_submit';
 }
 
+/** Normalisasi durasi ujian dalam menit (1..1440, default 60). */
+function normalize_exam_duration($value): int
+{
+    $n = (int) $value;
+    if ($n < 1) {
+        return 60;
+    }
+    return min($n, 1440);
+}
+
+/**
+ * Normalisasi batas minimal pengerjaan (0 = tanpa batas).
+ * Bila `$durasi` diisi, nilai dibatasi maksimal `$durasi - 1` menit.
+ */
+function normalize_exam_min_work($value, ?int $durasi = null): int
+{
+    $n = (int) $value;
+    if ($n < 0) {
+        $n = 0;
+    }
+    if ($durasi !== null && $durasi > 0 && $n >= $durasi) {
+        $n = max(0, $durasi - 1);
+    }
+    return $n;
+}
+
 /** Nomor percobaan dari satu baris hasil (default 1). */
 function get_result_attempt_number($row): int
 {

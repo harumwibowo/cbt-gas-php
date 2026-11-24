@@ -69,6 +69,11 @@ _, lg = call("login", "admin", "admin123", UA)
 tok = lg.get("token", "")
 check("login admin", lg.get("success") is True)
 
+# Batas minimal pengerjaan bersifat global; uji ini mengumpulkan jawaban segera,
+# jadi set ke 0 sementara lalu pulihkan di akhir.
+_orig_settings = call("getSettings", "admin", tok)[1].get("settings", {})
+call("saveSettings", "admin", tok, {"min_pengerjaan_ujian": "0", "tampilkan_pembahasan": "Ya"})
+
 # ---------------------------------------------------------------- upload
 code, up = upload("admin", tok, "soal.png", png_bytes(1))
 check("upload gambar soal", code == 200 and up.get("success") is True, up.get("url", ""))
@@ -194,6 +199,9 @@ check("siswa tidak boleh upload", code == 403 and su.get("success") is False, su
 
 # ---------------------------------------------------------------- bersihkan
 call("deleteExam", "admin", tok, exam_id)
+call("saveSettings", "admin", tok,
+     {"min_pengerjaan_ujian": _orig_settings.get("min_pengerjaan_ujian", "0"),
+      "tampilkan_pembahasan": _orig_settings.get("tampilkan_pembahasan", "Tidak")})
 
 print("\n=== RINGKASAN ===")
 print(f"PASS: {len(passed)}   FAIL: {len(failed)}")

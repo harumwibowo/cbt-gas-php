@@ -95,7 +95,7 @@ function db_last_id(): int
  */
 function schema_target_version(): int
 {
-    return defined('CBT_SCHEMA_VERSION') ? (int) CBT_SCHEMA_VERSION : 9;
+    return defined('CBT_SCHEMA_VERSION') ? (int) CBT_SCHEMA_VERSION : 11;
 }
 
 /**
@@ -244,6 +244,8 @@ function db_migration_mark(int $version): void
  *          (id_ujian, username_siswa, percobaan_ke). Ini menggantikan praktik
  *          lama yang menghapus duplikat pada jalur baca.
  * Versi 2: index tambahan untuk rekap dan log.
+ * Versi 7-v10: fitur arsitektur (2FA, audit, idempotency, token per siswa,
+ *             batas minimal pengerjaan ujian).
  */
 function db_apply_migrations(): void
 {
@@ -476,6 +478,55 @@ function db_apply_migrations(): void
             error_log('[CBT schema] migrasi v9 belum selesai: ' . $e->getMessage());
         }
     }
+
+    // ---- v10: batas minimal pengerjaan per ujian ---------------------------
+    if (!db_migration_applied(10)) {
+        try {
+            $cols = array_column(db_all('SHOW COLUMNS FROM `exams`'), 'Field');
+            if (!in_array('min_pengerjaan_menit', $cols, true)) {
+                db()->exec("ALTER TABLE exams ADD COLUMN `min_pengerjaan_menit` INT NOT NULL DEFAULT 0
+                    COMMENT 'Batas minimal pengerjaan (menit) sebelum tombol kirim terbuka. 0 = tanpa batas' AFTER `durasi_menit`");
+            }
+            db_migration_mark(10);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v10 belum selesai: ' . $e->getMessage());
+        }
+    }
+
+    // ---- v11: kebijakan pelaksanaan ujian dipusatkan di tabel settings ------
+    if (!db_migration_applied(11)) {
+        try {
+            // Sebelumnya durasi/percobaan/pembahasan diatur per-ujian. Saat beralih
+            // ke global, pakai nilai paling longgar dari ujian yang sudah ada agar
+            // siswa tidak tiba-tiba mendapat waktu/kesempatan lebih sedikit.
+            $durasiLama = (int) db_val('SELECT MAX(durasi_menit) FROM exams', [], 0);
+            $percobaanLama = (int) db_val('SELECT MAX(jumlah_percobaan) FROM exams', [], 0);
+            $pembahasanAda = (int) db_val("SELECT COUNT(*) FROM exams WHERE LOWER(TRIM(tampilkan_pembahasan)) = 'ya'", [], 0);
+            $durasiSeed = normalize_exam_duration($durasiLama > 0 ? $durasiLama : 60);
+            $percobaanSeed = normalize_exam_attempts($percobaanLama > 0 ? $percobaanLama : 1);
+            $pembahasanSeed = $pembahasanAda > 0 ? 'Ya' : 'Tidak';
+            // Nilai default dulu ditulis (aman bila baris sudah ada), lalu
+            // disesuaikan dengan data ujian lama HANYA bila nilainya masih default.
+            db_exec("INSERT IGNORE INTO settings (kunci, nilai, keterangan) VALUES
+                ('durasi_ujian', '60', 'Durasi pengerjaan ujian dalam menit untuk SEMUA ujian (1-1440)'),
+                ('min_pengerjaan_ujian', '0', 'Batas minimal pengerjaan (menit) sebelum tombol kirim terbuka, berlaku untuk SEMUA ujian. 0 = tanpa batas'),
+                ('jumlah_percobaan', '1', 'Jumlah maksimal percobaan pengerjaan untuk SEMUA ujian (1-99)'),
+                ('tampilkan_pembahasan', 'Tidak', 'Tampilkan kunci jawaban & pembahasan ke siswa setelah ujian dikumpulkan (Ya/Tidak) untuk SEMUA ujian')");
+            if ($durasiSeed !== 60) {
+                db_exec("UPDATE settings SET nilai = ? WHERE kunci = 'durasi_ujian' AND nilai = '60'", [(string) $durasiSeed]);
+            }
+            if ($percobaanSeed !== 1) {
+                db_exec("UPDATE settings SET nilai = ? WHERE kunci = 'jumlah_percobaan' AND nilai = '1'", [(string) $percobaanSeed]);
+            }
+            if ($pembahasanSeed === 'Ya') {
+                db_exec("UPDATE settings SET nilai = 'Ya' WHERE kunci = 'tampilkan_pembahasan' AND nilai = 'Tidak'");
+            }
+            cbt_cache_delete('cbt.settings.map');
+            db_migration_mark(11);
+        } catch (Throwable $e) {
+            error_log('[CBT schema] migrasi v11 belum selesai: ' . $e->getMessage());
+        }
+    }
 }
 
 /**
@@ -495,12 +546,20 @@ function db_migrations_status(): array
 }
 
 /**
- * Rollback satu versi (hanya struktur v7-v9; v1-v6 mengandung logika data).
+ * Rollback satu versi (hanya struktur v7-v11; v1-v6 mengandung logika data).
  * Selalu gunakan backup di storage/backups/ untuk pemulihan penuh.
  */
 function db_rollback_migration(int $version): void
 {
-    if ($version === 9) {
+    if ($version === 11) {
+        db_exec("DELETE FROM settings WHERE kunci IN ('durasi_ujian','min_pengerjaan_ujian','jumlah_percobaan','tampilkan_pembahasan')");
+        cbt_cache_delete('cbt.settings.map');
+    } elseif ($version === 10) {
+        $cols = array_column(db_all('SHOW COLUMNS FROM `exams`'), 'Field');
+        if (in_array('min_pengerjaan_menit', $cols, true)) {
+            db()->exec('ALTER TABLE exams DROP COLUMN min_pengerjaan_menit');
+        }
+    } elseif ($version === 9) {
         db()->exec('DROP TABLE IF EXISTS exam_tokens');
         db_exec("DELETE FROM settings WHERE kunci = 'token_per_siswa'");
     } elseif ($version === 8) {
@@ -520,7 +579,7 @@ function db_rollback_migration(int $version): void
             }
         }
     } else {
-        throw new InvalidArgumentException('Rollback hanya tersedia untuk versi 7, 8, dan 9.');
+        throw new InvalidArgumentException('Rollback hanya tersedia untuk versi 7, 8, 9, 10, dan 11.');
     }
     db_exec('DELETE FROM schema_migrations WHERE version = ?', [$version]);
 }
@@ -565,6 +624,10 @@ function seed_defaults(): void
         ['zona_waktu', 'WIB', 'Zona waktu Indonesia untuk seluruh tanggal & jam aplikasi (WIB / WITA / WIT)'],
         ['max_violations', '3', 'Batas maksimal pelanggaran keamanan sebelum tindakan dijalankan (berlaku untuk SEMUA ujian)'],
         ['tindakan_pelanggaran', 'auto_submit', 'Tindakan saat batas maksimal pelanggaran tercapai (auto_submit / auto_blokir / record_only)'],
+        ['durasi_ujian', '60', 'Durasi pengerjaan ujian dalam menit untuk SEMUA ujian (1-1440)'],
+        ['min_pengerjaan_ujian', '0', 'Batas minimal pengerjaan (menit) sebelum tombol kirim terbuka, berlaku untuk SEMUA ujian. 0 = tanpa batas'],
+        ['jumlah_percobaan', '1', 'Jumlah maksimal percobaan pengerjaan untuk SEMUA ujian (1-99)'],
+        ['tampilkan_pembahasan', 'Tidak', 'Tampilkan kunci jawaban & pembahasan ke siswa setelah ujian dikumpulkan (Ya/Tidak) untuk SEMUA ujian'],
         ['gemini_api_key', '', 'Google Gemini API Key untuk fitur generate soal AI'],
         ['gemini_model', 'gemini-2.0-flash', 'Model Gemini yang digunakan untuk generate konten'],
         ['token_per_siswa', 'Tidak', 'Gunakan token sekali pakai per siswa (Ya/Tidak). Kosong = token ujian global'],

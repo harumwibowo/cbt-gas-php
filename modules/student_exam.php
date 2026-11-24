@@ -30,8 +30,8 @@ function exam_time_bounds(array $examRow): array
 function exam_compute_deadline(array $examRow, ?int $startTs = null): ?string
 {
     $startTs = $startTs ?? time();
-    $duration = (int) ($examRow['durasi_menit'] ?? 0);
-    $duration = $duration > 0 ? $duration : 60;
+    // Durasi kini GLOBAL (Pengaturan › Pelaksanaan Ujian), bukan per-ujian.
+    $duration = get_exam_duration();
     $deadline = $startTs + ($duration * 60);
     $bounds = exam_time_bounds($examRow);
     if ($bounds['end'] !== null && $bounds['end'] < $deadline) {
@@ -96,7 +96,8 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
         $exam = [
             'id_ujian'             => tostr($examRow['id_ujian']),
             'nama_ujian'           => sanitize_plain_text($examRow['nama_ujian']),
-            'durasi_menit'         => (int) $examRow['durasi_menit'] > 0 ? (int) $examRow['durasi_menit'] : 60,
+            'durasi_menit'         => get_exam_duration(),
+            'min_pengerjaan_menit' => get_exam_min_work(),
             'waktu_mulai'          => format_datetime_iso($examRow['waktu_mulai']),
             'waktu_selesai'        => format_datetime_iso($examRow['waktu_selesai']),
             'acak_soal'            => tostr($examRow['acak_soal']) !== '' ? tostr($examRow['acak_soal']) : 'Ya',
@@ -109,7 +110,7 @@ function startStudentExam($username, $token, $id_ujian, $inputToken = ''): array
             'tipe_peserta'         => tostr($examRow['tipe_peserta']) !== '' ? strtolower(tostr($examRow['tipe_peserta'])) : 'general',
             'peserta_khusus'       => tostr($examRow['peserta_khusus']),
             'jumlah_soal_tampil'   => (int) $examRow['jumlah_soal_tampil'],
-            'jumlah_percobaan'     => normalize_exam_attempts($examRow['jumlah_percobaan']),
+            'jumlah_percobaan'     => get_exam_attempt_limit(),
             'max_violations'       => violation_policy()['max'],
             'tindakan_pelanggaran' => violation_policy()['action'],
         ];
@@ -719,6 +720,24 @@ function submitExam($username, $token, $payload): array
             $answers = exam_stored_answers($existingRecord['row']);
             $isAutoSubmit = true;
             $reason = 'Melewati batas waktu pengerjaan';
+        } else {
+            // Batas minimal pengerjaan: ditolak di server, bukan hanya di
+            // browser. Submit paksa oleh sistem (pelanggaran) tetap diizinkan.
+            $minPengerjaanMenit = get_exam_min_work();
+            $forcedByViolation = max(0, (int) $existingRecord['row']['jumlah_pelanggaran']) >= violation_policy()['max'];
+            if ($minPengerjaanMenit > 0 && !$forcedByViolation) {
+                $startedRaw = tostr($existingRecord['row']['waktu_mulai'] ?? '');
+                $startedTs = $startedRaw !== '' ? strtotime($startedRaw) : false;
+                $elapsedSeconds = $startedTs === false ? 0 : max(0, time() - $startedTs);
+                $minSeconds = $minPengerjaanMenit * 60;
+                if ($elapsedSeconds < $minSeconds) {
+                    $sisaMenit = (int) ceil(($minSeconds - $elapsedSeconds) / 60);
+                    return err(
+                        'Minimal pengerjaan ' . $minPengerjaanMenit . ' menit belum terpenuhi. '
+                        . 'Tombol kirim terbuka dalam ' . $sisaMenit . ' menit lagi. Jawaban Anda tetap tersimpan otomatis.'
+                    );
+                }
+            }
         }
 
         $submitAttemptNumber = (int) $existingRecord['percobaan_ke'];
@@ -808,11 +827,7 @@ function submitExam($username, $token, $payload): array
         $submitSummary = find_result_record($idUjian, tostr($username), $submitAttemptNumber);
         $nilaiTertinggi = $submitSummary !== null ? (float) $submitSummary['nilai_tertinggi'] : $nilaiAkhir;
 
-        $attemptsLimit = 1;
-        $examRow = db_one('SELECT jumlah_percobaan FROM exams WHERE id_ujian = ?', [$idUjian]);
-        if ($examRow) {
-            $attemptsLimit = normalize_exam_attempts($examRow['jumlah_percobaan']);
-        }
+        $attemptsLimit = get_exam_attempt_limit();
         $attemptsUsed = $submitSummary !== null ? $submitSummary['total_percobaan'] : $submitAttemptNumber;
         $sisaPercobaan = max(0, $attemptsLimit - $attemptsUsed);
 
@@ -853,6 +868,9 @@ function blockStudentExam($username, $token, $payload): array
 
     $payload = is_array($payload) ? $payload : [];
     $idUjian = trim(tostr($payload['id_ujian'] ?? ''));
+    if ($idUjian === '') {
+        return err('ID ujian tidak valid.');
+    }
     $violations = (int) ($payload['violations'] ?? 0) > 0 ? (int) $payload['violations'] : 1;
     $reason = tostr($payload['reason'] ?? '') !== '' ? tostr($payload['reason']) : 'Batas maksimal pelanggaran keamanan tercapai';
     $answersJson = is_string($payload['answers'] ?? null)
@@ -887,6 +905,7 @@ function blockStudentExam($username, $token, $payload): array
 
         return ['success' => true, 'message' => 'Ujian berhasil diblokir.'];
     } catch (Throwable $e) {
+        error_log('[CBT] blockStudentExam: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
         return err('Gagal memblokir ujian: ' . client_error_message($e->getMessage()));
     }
 }

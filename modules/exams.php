@@ -9,12 +9,15 @@ declare(strict_types=1);
 function exam_to_client(array $row, int $jumlahSoal = 0, int $jumlahPeserta = 0): array
 {
     $owner = trim(tostr($row['id_guru']));
-    // Batas & tindakan pelanggaran kini GLOBAL (menu Pengaturan Admin), bukan per-ujian.
+    // Kebijakan pelanggaran & pelaksanaan ujian kini GLOBAL (menu Pengaturan Admin),
+    // bukan per-ujian. Kolom lama di tabel exams tetap ada untuk data historis.
     $policy = violation_policy();
+    $examPolicy = exam_policy();
     return [
         'id_ujian'             => tostr($row['id_ujian']),
         'nama_ujian'           => sanitize_plain_text($row['nama_ujian']),
-        'durasi_menit'         => (int) $row['durasi_menit'] > 0 ? (int) $row['durasi_menit'] : 60,
+        'durasi_menit'         => $examPolicy['durasi'],
+        'min_pengerjaan_menit' => $examPolicy['min_pengerjaan'],
         'waktu_mulai'          => format_datetime_iso($row['waktu_mulai']),
         'waktu_selesai'        => format_datetime_iso($row['waktu_selesai']),
         'acak_soal'            => tostr($row['acak_soal']) !== '' ? tostr($row['acak_soal']) : 'Ya',
@@ -28,8 +31,8 @@ function exam_to_client(array $row, int $jumlahSoal = 0, int $jumlahPeserta = 0)
         'kolaborator'          => tostr($row['kolaborator']),
         'tingkat'              => tostr($row['tingkat']),
         'jumlah_soal_tampil'   => (int) $row['jumlah_soal_tampil'],
-        'jumlah_percobaan'     => normalize_exam_attempts($row['jumlah_percobaan']),
-        'tampilkan_pembahasan' => strtolower(tostr($row['tampilkan_pembahasan'])) === 'ya' ? 'Ya' : 'Tidak',
+        'jumlah_percobaan'     => $examPolicy['percobaan'],
+        'tampilkan_pembahasan' => $examPolicy['pembahasan'] ? 'Ya' : 'Tidak',
         'max_violations'       => $policy['max'],
         'tindakan_pelanggaran' => $policy['action'],
         'jumlah_soal'          => $jumlahSoal,
@@ -129,13 +132,11 @@ function saveExam($username, $token, $examData): array
         if ($namaVal === '') {
             return err('Nama ujian wajib diisi.');
         }
-        $durasiVal = (int) ($examData['durasi_menit'] ?? 0);
-        if ($durasiVal <= 0) {
-            $durasiVal = 60;
-        }
-        if ($durasiVal > 1440) {
-            return err('Durasi ujian maksimal 1440 menit (24 jam).');
-        }
+        // Durasi, minimal pengerjaan, jumlah percobaan, dan tampil/tidaknya pembahasan
+        // kini GLOBAL (menu Pengaturan Admin); nilai kiriman form diabaikan.
+        $examPolicy = exam_policy();
+        $durasiVal = $examPolicy['durasi'];
+        $minPengerjaanVal = $examPolicy['min_pengerjaan'];
         $mulaiVal = to_db_datetime($examData['waktu_mulai'] ?? '');
         $selesaiVal = to_db_datetime($examData['waktu_selesai'] ?? '');
         if ($mulaiVal === null || $selesaiVal === null) {
@@ -172,8 +173,8 @@ function saveExam($username, $token, $examData): array
             $jumlahSoalTampilVal = max(0, (int) $jumlahTampilRaw);
         }
 
-        $tampilkanPembahasanVal = strtolower(trim(tostr($examData['tampilkan_pembahasan'] ?? ''))) === 'ya' ? 'Ya' : 'Tidak';
-        $jumlahPercobaanVal = normalize_exam_attempts($examData['jumlah_percobaan'] ?? 1);
+        $tampilkanPembahasanVal = $examPolicy['pembahasan'] ? 'Ya' : 'Tidak';
+        $jumlahPercobaanVal = $examPolicy['percobaan'];
         // Kolom exams.max_violations / exams.tindakan_pelanggaran dipertahankan agar data
         // lama tetap terbaca, namun nilainya selalu mengikuti pengaturan GLOBAL.
         $policyGlobal = violation_policy();
@@ -232,13 +233,13 @@ function saveExam($username, $token, $examData): array
             }
 
             db_exec(
-                'UPDATE exams SET nama_ujian = ?, durasi_menit = ?, waktu_mulai = ?, waktu_selesai = ?,
+                'UPDATE exams SET nama_ujian = ?, durasi_menit = ?, min_pengerjaan_menit = ?, waktu_mulai = ?, waktu_selesai = ?,
                     acak_soal = ?, acak_opsi = ?, token_ujian = ?, kelas = ?, sesi = ?, tipe_peserta = ?,
                     peserta_khusus = ?, id_guru = ?, kolaborator = ?, tingkat = ?, jumlah_soal_tampil = ?,
                     tampilkan_pembahasan = ?, jumlah_percobaan = ?, max_violations = ?, tindakan_pelanggaran = ?
                  WHERE id_ujian = ?',
                 [
-                    $namaVal, $durasiVal, $mulaiVal, $selesaiVal, $acakSoalVal, $acakOpsiVal, $tokenVal,
+                    $namaVal, $durasiVal, $minPengerjaanVal, $mulaiVal, $selesaiVal, $acakSoalVal, $acakOpsiVal, $tokenVal,
                     $kelasVal, $sesiVal, $tipePesertaVal, $pesertaKhususVal, $guruVal, $kolaboratorVal,
                     $tingkatVal, $jumlahSoalTampilVal, $tampilkanPembahasanVal, $jumlahPercobaanVal,
                     $maxViolationsVal, $tindakanPelanggaranVal, $idUjian,
@@ -258,6 +259,7 @@ function saveExam($username, $token, $examData): array
                 . $targetLog
                 . ($jumlahSoalTampilVal > 0 ? ' (Jumlah Soal Tampil: ' . $jumlahSoalTampilVal . ' acak/soal)' : '')
                 . ' (Jumlah Percobaan: ' . $jumlahPercobaanVal . ')'
+                . ($minPengerjaanVal > 0 ? ' (Min. Pengerjaan: ' . $minPengerjaanVal . ' menit)' : '')
                 . ' (Maks Pelanggaran: ' . $maxViolationsVal . 'x / ' . $tindakanPelanggaranVal . ')'
             );
             return ['success' => true, 'message' => 'Ujian berhasil diperbarui.'];
@@ -265,12 +267,12 @@ function saveExam($username, $token, $examData): array
 
         $newExamId = new_id('EXM');
         db_exec(
-            'INSERT INTO exams (id_ujian, nama_ujian, durasi_menit, waktu_mulai, waktu_selesai, acak_soal, acak_opsi,
+            'INSERT INTO exams (id_ujian, nama_ujian, durasi_menit, min_pengerjaan_menit, waktu_mulai, waktu_selesai, acak_soal, acak_opsi,
                 token_ujian, kelas, sesi, tipe_peserta, peserta_khusus, id_guru, kolaborator, tingkat,
                 jumlah_soal_tampil, tampilkan_pembahasan, jumlah_percobaan, max_violations, tindakan_pelanggaran)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             [
-                $newExamId, $namaVal, $durasiVal, $mulaiVal, $selesaiVal, $acakSoalVal, $acakOpsiVal, $tokenVal,
+                $newExamId, $namaVal, $durasiVal, $minPengerjaanVal, $mulaiVal, $selesaiVal, $acakSoalVal, $acakOpsiVal, $tokenVal,
                 $kelasVal, $sesiVal, $tipePesertaVal, $pesertaKhususVal, $guruVal, $kolaboratorVal, $tingkatVal,
                 $jumlahSoalTampilVal, $tampilkanPembahasanVal, $jumlahPercobaanVal, $maxViolationsVal,
                 $tindakanPelanggaranVal,
@@ -290,6 +292,7 @@ function saveExam($username, $token, $examData): array
             . $targetLog2
             . ($jumlahSoalTampilVal > 0 ? ' (Jumlah Soal Tampil: ' . $jumlahSoalTampilVal . ' acak/soal)' : '')
             . ' (Jumlah Percobaan: ' . $jumlahPercobaanVal . ')'
+            . ($minPengerjaanVal > 0 ? ' (Min. Pengerjaan: ' . $minPengerjaanVal . ' menit)' : '')
             . ' (Maks Pelanggaran: ' . $maxViolationsVal . 'x / ' . $tindakanPelanggaranVal . ')'
         );
         return ['success' => true, 'message' => 'Ujian berhasil dibuat.', 'id_ujian' => $newExamId];
